@@ -1,0 +1,850 @@
+# shellcheck shell=bash
+# checkout.sh — what is happening in this checkout
+# (adr-20260924-a-checkout-records-what-is-happening-in-it).
+#
+# git has a primitive for "someone is using this tree" — `git worktree lock`,
+# which housekeeping already reads as "a session may still be using it". It
+# refuses the one tree that needs it most:
+#
+#   $ git worktree lock .
+#   fatal: The main working tree cannot be locked or unlocked
+#
+# So jig writes down for itself what git will not hold: that a live agent
+# session is working here. Two records, both under the checkout's own
+# gitignored `.ai/runtime/`, both rewritten by every jig command:
+#
+#   runtime/working/<name>  one file per piece of work in progress here
+#   runtime/checkout        what this checkout last told a reader
+#
+# **Only the incomputable is stored.** Which worktree the work is in, which
+# branch it sits on and when it was last touched are all facts git or the
+# filesystem answers better — `jig status` already prints `worktree=<path>`
+# from `git worktree list` (ADR-0029), and the record's own mtime is when.
+# What nothing can answer afterwards is which command ran, so that is the
+# whole content. A stored copy of a computed fact is what
+# conventions/required-records.md says to prefer the other way round.
+#
+# Nothing here may fail a command or print to stdout: a checkout note that can
+# break `jig verify`, or prepend a line to output another script reads, is
+# worse than the silence it replaces. Every path gives up with `return 0`, and
+# the one message goes to stderr.
+
+# _jig_checkout_ready — resolve the checkout this command is running in and
+# succeed only in a jig project. Quiet where jig_require_init would die: the
+# recorder runs before the command that is entitled to complain.
+#
+# **The root is always computed, never taken from the environment**, exactly as
+# jig_require_repo computes it (conventions/shell.md: `pwd -P`, because git
+# resolves symlinks and Windows spells paths differently). An inherited
+# JIG_PROJECT is somebody else's answer, and trusting it made a record land in
+# the wrong checkout: a jig command run under another jig inherits it, so the
+# test suite run by `jig verify` wrote every one of its records into the
+# repository being verified instead of each test's own tree. It was found in
+# this repository's `.ai/runtime/told/`, holding session ids that only ever
+# existed inside tests. A record about "what is happening here" may not take
+# "here" on hearsay.
+#
+# Memoised privately, so the two calls the dispatcher makes cost one `git`
+# between them. The memo is this file's own, never the environment's.
+_JIG_CHECKOUT_PROJECT=""
+_jig_checkout_ready() {
+  local top
+  if [ -z "$_JIG_CHECKOUT_PROJECT" ]; then
+    top=$(jig_repo_root 2>/dev/null) || return 1
+    [ -n "$top" ] || return 1
+    _JIG_CHECKOUT_PROJECT=$(cd -P "$top" 2>/dev/null && pwd -P) || return 1
+  fi
+  JIG_PROJECT="$_JIG_CHECKOUT_PROJECT"
+  [ -f "$JIG_PROJECT/$JIG_AI_DIR/config.yaml" ] || return 1
+  return 0
+}
+
+_jig_checkout_runtime() { printf '%s/%s/runtime\n' "$JIG_PROJECT" "$JIG_AI_DIR"; }
+
+# _jig_checkout_value <file> <key> — the first `<key>: <value>` line of a flat
+# jig record, read by the shell alone.
+#
+# The rest of the codebase reads this format with `sed -n 's/^key: //p'`, and
+# this reader exists only because of where it runs: before *every* jig
+# command. A sed per key put four process starts on every command that does
+# any work, and process starts are what took `jig status` from 4 s to 0.6 s
+# when they were batched away (conventions/shell.md). A record is a handful of
+# short lines, so the shell reads it for nothing.
+#
+# `|| [ -n "$line" ]` picks up a last line with no newline. The CR is stripped
+# explicitly because `read` keeps it where sed would not, and this reader must
+# answer the same as the rest of the codebase on a record written under
+# Windows.
+_jig_checkout_value() {
+  local file="$1" key="$2"
+  _jig_checkout_read "$file" "$key" || return 0
+  printf '%s\n' "$_JIG_CHECKOUT_READ"
+  return 0
+}
+
+# _jig_checkout_read <file> <key> — the same answer in _JIG_CHECKOUT_READ and
+# without a subshell, for the one caller that asks once per record.
+#
+# `cmd=$(_jig_checkout_value …)` is a fork, and a fork per record is the same
+# process-per-item shape as the `stat` above: batching `stat` alone left 500
+# forks behind and most of the cost with them. A function that sets a variable
+# is how shell avoids that (status.sh's `_ST_*` readers do it for the same
+# reason), so the loop over a record directory now forks not at all.
+_JIG_CHECKOUT_READ=""
+_jig_checkout_read() {
+  local file="$1" key="$2" line
+  _JIG_CHECKOUT_READ=""
+  [ -f "$file" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}
+    case "$line" in
+      "$key: "*)
+        _JIG_CHECKOUT_READ=${line#"$key": }
+        return 0
+        ;;
+    esac
+  done < "$file"
+  return 1
+}
+
+# The branch checked out here, empty when HEAD is detached. Read before the
+# command runs, so `task start` cannot answer for the tree it is about to move.
+#
+# This one git call is the whole external cost of recording: everything else
+# the recorder does is shell. Reading `.git/HEAD` directly would save it, the
+# way jig_config_clone_root reads git's own files, but that puts a second
+# implementation of ref resolution in the tree to save a few milliseconds off
+# a command that is about to run git anyway.
+_jig_checkout_head() {
+  git -C "$JIG_PROJECT" symbolic-ref --quiet --short HEAD 2>/dev/null || printf ''
+}
+
+# --- naming the work ------------------------------------------------------------
+#
+# A record's file name is derived, never composed, in this order:
+#
+#   1. a task named by the command's arguments — `jig task show Y`;
+#   2. otherwise the task whose branch is checked out here;
+#   3. otherwise the runtime's own session id, when it gives one;
+#   4. otherwise nothing, and no record is written.
+#
+# The name becomes a path, so it passes jig_valid_id first — the same check
+# task_dir makes, for the same RULES.md invariant. Rule 1 additionally
+# requires the workspace to exist, so a subcommand word can never be mistaken
+# for an id, and no name can be invented by an argument.
+
+# _jig_checkout_worktree_list — git's own answer to "where is each branch
+# checked out", or nothing. Read from git, never from another checkout's
+# `.ai/` (ADR-0029). One call serves a whole walk, so it is fetched by the
+# caller rather than per record.
+_jig_checkout_worktree_list() {
+  git -C "$JIG_PROJECT" worktree list --porcelain 2>/dev/null || printf ''
+}
+
+# _jig_checkout_branch_elsewhere <branch> <head> <list> — exit 0 when <branch>
+# is checked out in some worktree that is not this one. A string test, no
+# process of its own.
+#
+# Comparing the branch with this checkout's HEAD rather than comparing paths
+# is deliberate: path spellings differ between git and the shell on Windows
+# (conventions/shell.md), and the question needs no path at all — if the
+# branch is not the one checked out here and git lists it anyway, it is
+# checked out somewhere else.
+_jig_checkout_branch_elsewhere() {
+  local branch="$1" head="$2" list="$3"
+  [ -n "$branch" ] || return 1
+  [ -n "$list" ] || return 1
+  [ "$branch" != "$head" ] || return 1
+  jig_has_line "branch refs/heads/$branch" "$list"
+}
+
+# _jig_checkout_task_elsewhere <id> <head> <list> — exit 0 when <id> is a task
+# of this checkout whose branch lives in another worktree.
+_jig_checkout_task_elsewhere() {
+  local id="$1" head="$2" list="$3" state
+  state="$JIG_PROJECT/$JIG_AI_DIR/workspace/tasks/$id/state"
+  [ -f "$state" ] || return 1
+  _jig_checkout_read "$state" branch || return 1
+  _jig_checkout_branch_elsewhere "$_JIG_CHECKOUT_READ" "$head" "$list"
+}
+
+# Rule 1, with the one exclusion the reviewer's measurement earned: **a task
+# whose branch is checked out in another worktree is not work happening
+# here.** Naming `jig task show T-2` from the main checkout as work here made
+# one page of `jig status` say both `task T-2 … worktree=<path>` — read from
+# git, ADR-0029 — and `working here: task T-2`. Reading about work elsewhere
+# is not doing it.
+_jig_checkout_name_from_args() {
+  local head="$1" a list=""
+  shift
+  for a in "$@"; do
+    case "$a" in -*) continue ;; esac
+    jig_valid_id "$a" || continue
+    [ -f "$JIG_PROJECT/$JIG_AI_DIR/workspace/tasks/$a/state" ] || continue
+    # Asked of git only once a candidate exists, so an ordinary command pays
+    # nothing for it.
+    [ -n "$list" ] || list=$(_jig_checkout_worktree_list)
+    if _jig_checkout_task_elsewhere "$a" "$head" "$list"; then continue; fi
+    printf '%s\n' "$a"
+    return 0
+  done
+  return 1
+}
+
+# The task whose branch is this checkout's HEAD. Deliberately not
+# _task_candidates_for_branch: this runs on every jig command, and sourcing
+# task.sh (109 KB) to answer it would put that cost on `jig version`. The
+# narrower question here — is some live task sitting on this branch — needs
+# neither the pause rules nor the ambiguity reporting that function owes its
+# callers. `active | ready` is live, the same pair task.sh uses.
+_jig_checkout_name_from_head() {
+  local head="$1" d id branch status
+  [ -n "$head" ] || return 1
+  for d in "$JIG_PROJECT/$JIG_AI_DIR"/workspace/tasks/*/; do
+    [ -f "$d/state" ] || continue
+    id=${d%/}
+    id=${id##*/}
+    jig_valid_id "$id" || continue
+    # _jig_checkout_read, not `$(_jig_checkout_value …)`: a fork per task
+    # directory on every command grew with the number of tasks.
+    _jig_checkout_read "$d/state" branch || _JIG_CHECKOUT_READ=""
+    branch=$_JIG_CHECKOUT_READ
+    [ "$branch" = "$head" ] || continue
+    _jig_checkout_read "$d/state" status || _JIG_CHECKOUT_READ=""
+    status=$_JIG_CHECKOUT_READ
+    case "$status" in
+      active | ready)
+        printf '%s\n' "$id"
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+# jig_checkout_session — the runtime's id for the session running this command,
+# empty when it has none.
+#
+# Runtime-specific knowledge lives in adapters (ADR-0024), and exit 2 means
+# "not applicable to this runtime", as it does for the session hook. Adapters
+# live in the framework source, where init and upgrade read them from; an
+# install whose source is not on this machine simply has no answer here.
+#
+# The libraries the lookup needs are sourced inside this command
+# substitution's subshell, so nothing leaks into the process that asked — a
+# recorder running on every command must not change what a command sees. The
+# id is compared only with names of files jig wrote itself: it is never
+# shown, never sent anywhere and never stored beyond its own file name.
+# _jig_checkout_adapters_dir — the adapters directory this run can reach, or
+# nothing.
+#
+# Adapters are not copied into `.ai/` (ADR-0003 installs what a project runs,
+# and the adapters are the installer's own material), so they are found where
+# init and upgrade find them: the framework source the manifest records. In a
+# project installed from a checkout that is not on this machine there is
+# nothing there — and then the jig that is running may itself be a framework
+# checkout, which is the common case for a global install, so that is tried
+# second. Whoever installed is no longer the only one the session id reaches.
+#
+# What is still not covered is a copy install driven through `.ai/scripts/jig`
+# with the source gone. Reaching adapters there means installing them into the
+# project, which is an install-surface decision of its own
+# (adr-20260924-a-checkout-records-what-is-happening-in-it); until it is taken,
+# `jig status` says the observation is unavailable rather than staying silent.
+_jig_checkout_adapters_dir() {
+  local src
+  src=$(
+    # shellcheck source=lib/manifest.sh
+    . "$JIG_LIB/manifest.sh" 2>/dev/null || exit 0
+    manifest_source 2>/dev/null || exit 0
+  ) || src=""
+  if [ -n "$src" ] && [ -d "$src/adapters" ]; then
+    printf '%s/adapters\n' "$src"
+    return 0
+  fi
+  src=$(jig_source_root 2>/dev/null) || src=""
+  if [ -n "$src" ] && [ -d "$src/adapters" ]; then
+    printf '%s/adapters\n' "$src"
+    return 0
+  fi
+  return 1
+}
+
+jig_checkout_session() {
+  (
+    root=$(_jig_checkout_adapters_dir) || exit 0
+    # shellcheck source=lib/profiles.sh
+    . "$JIG_LIB/profiles.sh" 2>/dev/null || exit 0
+    for a in $(cfg_list adapters "claude codex"); do
+      adir=$(adapters_dir "$root" "$a") || continue
+      [ -f "$adir/adapter.sh" ] || continue
+      # shellcheck disable=SC1090
+      . "$adir/adapter.sh" 2>/dev/null || continue
+      command -v "adapter_${a}_session_id" >/dev/null 2>&1 || continue
+      id=$("adapter_${a}_session_id" 2>/dev/null) || continue
+      [ -n "$id" ] || continue
+      jig_valid_id "$id" || continue
+      printf '%s\n' "$id"
+      exit 0
+    done
+    exit 0
+  ) 2>/dev/null
+}
+
+# jig_checkout_session_problem — why this checkout cannot tell one session from
+# another, or nothing when it can.
+#
+# A reader who is told nothing cannot tell "nobody else is here" from "there is
+# no way to see anybody". The framework already refuses that ambiguity for the
+# session hook, whose adapter capability uses the same exit 2 and which
+# `jig status` reports either way (ADR-0024), so this one says it too. The two
+# answers are kept apart because they are different problems: one is a runtime
+# that does not name its sessions, which is a named boundary; the other is an
+# install that cannot reach the adapters, which is a gap.
+jig_checkout_session_problem() {
+  local root
+  if ! root=$(_jig_checkout_adapters_dir); then
+    printf 'the framework source that holds the adapters is not on this machine\n'
+    return 0
+  fi
+  [ -z "$(jig_checkout_session)" ] || return 0
+  printf 'no active runtime names its sessions here\n'
+  return 0
+}
+
+# --- freshness ------------------------------------------------------------------
+
+# How long a record still counts as a live session. Long on purpose: a stale
+# record costs one worktree nobody needed, a missed one costs another session's
+# HEAD (design §8). A live session refreshes its own record with every jig
+# command it runs, so a generous window does not keep a finished session alive.
+#
+# One duration grammar for the whole framework: jig_duration_seconds, which
+# dies on anything else — here the death is caught and the default stands,
+# because a mistyped setting must not take a command down with it.
+_jig_checkout_ttl() {
+  local raw seconds
+  raw=$(cfg checkout.busy_ttl "12h")
+  seconds=$(jig_duration_seconds "$raw" 2>/dev/null) || seconds=""
+  case "$seconds" in
+    '' | *[!0-9]*) seconds=43200 ;;
+  esac
+  printf '%s\n' "$seconds"
+}
+
+# _jig_checkout_mtimes <file>... — "<mtime> <path>" per file, in **one**
+# process for the whole set. The same stat pair the session hook uses, BSD
+# first and GNU second, neither mandatory beyond what ADR-0002 allows.
+#
+# One call, not one per file: a `stat` and a `date` inside the loop is the
+# process-per-item shape conventions/shell.md forbids, and the cost is not
+# hypothetical, because nothing here deletes an expired record. Measured on
+# `jig status`: 1.77 s of CPU with one record against 8.46 s with 500. The
+# whole directory now costs two processes, whatever it holds.
+_jig_checkout_mtimes() {
+  stat -f '%m %N' "$@" 2>/dev/null && return 0
+  stat -c '%Y %n' "$@" 2>/dev/null && return 0
+  return 0
+}
+
+# A short "40s"/"12m"/"3h" for a message. Whole units only: the reader is
+# deciding whether someone is around, not measuring.
+jig_checkout_ago() {
+  local s="$1"
+  if [ "$s" -lt 60 ]; then
+    printf '%ds\n' "$s"
+    return 0
+  fi
+  if [ "$s" -lt 3600 ]; then
+    printf '%dm\n' $((s / 60))
+    return 0
+  fi
+  printf '%dh\n' $((s / 3600))
+}
+
+# --- writing --------------------------------------------------------------------
+
+# tmp then mv, as _task_rewrite_state writes state (conventions/shell.md): a
+# reader sees the old record or the new one, never a torn one.
+#
+# The temporary is named `.tmp.<file>.<pid>`, with the leading dot, where
+# state.sh writes `state.tmp.$$`. The dot is not decoration: a process killed
+# between the write and the rename leaves the temporary behind, and
+# `working/` is read as a plain glob of record names. `<id>.tmp.1234` passes
+# jig_valid_id — dots are legal in an id — so it would be listed as a
+# neighbour that never existed, and later refused for. A dotfile is outside
+# the glob, so a leftover is invisible to every reader.
+_jig_checkout_write() {
+  local file="$1" body="$2" dir base tmp
+  dir=${file%/*}
+  base=${file##*/}
+  tmp="$dir/.tmp.$base.$$"
+  printf '%s' "$body" > "$tmp" 2>/dev/null || {
+    rm -f "$tmp" 2>/dev/null
+    return 1
+  }
+  mv "$tmp" "$file" 2>/dev/null || {
+    rm -f "$tmp" 2>/dev/null
+    return 1
+  }
+  return 0
+}
+
+# jig_checkout_record <command-words...> — called by the dispatcher before the
+# command runs. Writes at most two records and prints nothing.
+#
+# JIG_INTERNAL_REDRAW marks the re-entries that are not a session: the status
+# page's own redraw (jig_status_page_touch, common.sh) re-runs `jig status
+# --refresh|--html` as a subprocess, because none of the writers that trigger
+# it may source status.sh (ARCHITECTURE.md, Scripts layout); and a review
+# receipt's check runs `jig context` in the task's checkout to hash the
+# knowledge it read (_task_receipt_context_hash, task.sh), from any command
+# that asks it — `task list --json` among them. Recording either run as work
+# would overwrite `runtime/checkout`'s `command:` with a line nobody ran — a
+# redraw or a read, not a session
+# (adr-20260924-a-checkout-records-what-is-happening-in-it).
+jig_checkout_record() {
+  [ -z "${JIG_INTERNAL_REDRAW:-}" ] || return 0
+  _jig_checkout_record_inner "$@" || true
+  return 0
+}
+
+_jig_checkout_record_inner() {
+  local runtime head name told body
+  _jig_checkout_ready || return 0
+  runtime=$(_jig_checkout_runtime)
+  [ -d "$runtime" ] || mkdir -p "$runtime" 2>/dev/null || return 0
+  head=$(_jig_checkout_head)
+
+  # The checkout's own record. `branch_reported` is carried over untouched:
+  # it is the one fact here that is about a reader's knowledge rather than the
+  # tree's state, and only the commands that print the notice may move it.
+  told=$(_jig_checkout_value "$runtime/checkout" branch_reported)
+  body="command: $*
+"
+  if [ -n "$told" ]; then
+    body="$body""branch_reported: $told
+"
+  fi
+  _jig_checkout_write "$runtime/checkout" "$body" || true
+
+  # Which task this session has taken, for the clone: written before the
+  # working record is named, because that naming may give up on a run that
+  # still works a task (one whose branch is checked out elsewhere).
+  _jig_checkout_take "$@" || true
+
+  name=""
+  if ! name=$(_jig_checkout_name_from_args "$head" "$@"); then
+    if ! name=$(_jig_checkout_name_from_head "$head"); then
+      name=$(jig_checkout_session)
+    fi
+  fi
+  [ -n "$name" ] || return 0
+  jig_valid_id "$name" || return 0
+  [ -d "$runtime/working" ] || mkdir -p "$runtime/working" 2>/dev/null || return 0
+  _jig_checkout_write "$runtime/working/$name" "command: $*
+" || true
+  return 0
+}
+
+# --- taken: which session works which task, for the clone ----------------------
+#
+# `runtime/working/` answers "is this checkout busy", and only for this
+# checkout. `jig queue next` asks another question — has some other session
+# taken this task — from any worktree of the clone, and a record named by a
+# task cannot say which session wrote it. So a second record answers it
+# (adr-20261030-a-task-another-session-works-on-is-not-advised):
+#
+#   <clone root>/.ai/runtime/taken/<task-id>/<session-id>
+#
+# one file per task and session, in the clone's main checkout, found the way
+# the queue's own file is (jig_config_clone_root). Which session holds which
+# task is a fact about the clone, as the queue's order is (ADR-0008, the
+# per-clone runtime exception). The body is a flat record:
+#
+#   checkout: <the checkout the command ran in>
+#   since: <UTC, when this session took the task>
+#   command: <the words of the jig command>
+#
+# and the file's mtime is when the session was last active. The session id is
+# only a file name, compared with the caller's own id and never shown. Nothing
+# here is deleted: a record lapses after checkout.busy_ttl, as a working
+# record does.
+
+# _jig_checkout_works <command-words...> — the task this command works on, or
+# exit 1. Working a task is how a session takes it; there is no other way.
+# Reading about a task (`task show`, `route`, `findings`, `list`), filing it
+# (`task new`), ordering it (`queue set <id>`), shipping or closing it is not
+# taking it: a coordinator does all of those for tasks other sessions take.
+# The task is the first argument that is a valid id with a workspace, the
+# test rule 1 of the working record's naming makes.
+#
+# `task set <id> status consolidated` is the close, and so is not working the
+# task: were it taken, the record's write would raise the clone's revision
+# before the command's own claim of `--revision <n>`, and a close from a
+# session would always be refused as stale-revision.
+#
+# `task artifact read` is reading. `task artifact write|append <id> task` on a
+# task nobody started (no `branch:` in its state) is filing it: the goal goes
+# in with the task, by whoever found the work — often a session busy with
+# something else — and it would hold the task for checkout.busy_ttl against
+# everyone. Any other document, or the goal of a started task, is working it:
+# discovery before `task start` is how a T3 is worked first.
+_jig_checkout_works() {
+  local a filing=0
+  case "${1:-}" in
+    task)
+      case "${2:-}" in
+        start | bootstrap | set | artifact | finding | autopilot | gate | receipt) ;;
+        *) return 1 ;;
+      esac
+      case "$*" in
+        "task set "*" status consolidated" | "task set "*" status consolidated "*) return 1 ;;
+      esac
+      if [ "$2" = artifact ]; then
+        case "${3:-}" in
+          read) return 1 ;;
+          write | append) [ "${5:-}" != task ] || filing=1 ;;
+        esac
+      fi
+      shift 2
+      ;;
+    context) shift ;;
+    *) return 1 ;;
+  esac
+  for a in "$@"; do
+    case "$a" in -*) continue ;; esac
+    jig_valid_id "$a" || continue
+    [ -f "$JIG_PROJECT/$JIG_AI_DIR/workspace/tasks/$a/state" ] || continue
+    if [ "$filing" = 1 ] \
+      && ! grep -q '^branch: *[^ ]' "$JIG_PROJECT/$JIG_AI_DIR/workspace/tasks/$a/state" 2>/dev/null; then
+      return 1
+    fi
+    printf '%s\n' "$a"
+    return 0
+  done
+  return 1
+}
+
+# _jig_checkout_take <command-words...> — write this session's record for the
+# task the command works on. Nothing without a session id: a record that
+# cannot say whose it is could not tell the caller's own task from another's.
+# `since` is carried over while the record is still live and starts again
+# once it has lapsed.
+_jig_checkout_take() {
+  local id session root dir file since="" mtime f age ttl cmd
+  id=$(_jig_checkout_works "$@") || return 0
+  session=$(jig_checkout_session)
+  [ -n "$session" ] || return 0
+  root=$(jig_config_clone_root 2>/dev/null) || return 0
+  [ -n "$root" ] || return 0
+  dir="$root/$JIG_AI_DIR/runtime/taken/$id"
+  [ -d "$dir" ] || mkdir -p "$dir" 2>/dev/null || return 0
+  file="$dir/$session"
+  if [ -f "$file" ] && _jig_checkout_read "$file" since; then
+    since=$_JIG_CHECKOUT_READ
+    ttl=$(_jig_checkout_ttl)
+    age=""
+    # Every line is read and only a numeric one kept: GNU stat answers the
+    # BSD form with lines of its own before the fallback answers.
+    while read -r mtime f; do
+      case "$mtime" in '' | *[!0-9]*) continue ;; esac
+      age=$(($(date +%s) - mtime))
+    done < <(_jig_checkout_mtimes "$file")
+    if [ -z "$age" ] || [ "$age" -gt "$ttl" ]; then since=""; fi
+  fi
+  [ -n "$since" ] || since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  # One line per key: a line break inside an argument must not start a key,
+  # and a tab must not become a field of the lines jig_checkout_taken prints.
+  cmd=$*
+  cmd=${cmd//$'\n'/ }
+  cmd=${cmd//$'\t'/ }
+  _jig_checkout_write "$file" "checkout: $JIG_PROJECT
+since: $since
+command: $cmd
+" || return 0
+  # `jig queue next --json` reports this record, so its write raises the
+  # clone's revision like every other record a read reports
+  # (conventions/json-output.md, adr-20261016-the-clone-revision-is-a-claimed-name).
+  # Every rewrite raises it, not only a new holding: which session is the
+  # newest holder, and what it last ran, change with any rewrite. Most of
+  # the commands that write it raise the revision themselves anyway.
+  jig_record_changed >/dev/null 2>&1 || true
+  return 0
+}
+
+# jig_checkout_taken_begin — read once per command what every
+# jig_checkout_taken call compares with: this session's id, the window, the
+# clock and the clone root. A listing asks per task; the session lookup is a
+# subshell that sources the adapters, so it is not paid per task.
+_JIG_TK_READY=""
+_JIG_TK_SELF=""
+_JIG_TK_TTL=43200
+_JIG_TK_NOW=0
+_JIG_TK_ROOT=""
+jig_checkout_taken_begin() {
+  _JIG_TK_READY=1
+  _JIG_TK_SELF=$(jig_checkout_session)
+  _JIG_TK_TTL=$(_jig_checkout_ttl)
+  _JIG_TK_NOW=$(date +%s)
+  _JIG_TK_ROOT=$(jig_config_clone_root 2>/dev/null) || _JIG_TK_ROOT=""
+  return 0
+}
+
+# jig_checkout_taken <id> — "<checkout>\t<since>\t<idle seconds>\t<command>"
+# when another session holds task <id>, nothing when nobody does or the
+# caller does.
+#
+# **The newest live record holds the task.** That is also how a person takes
+# over a task whose session died: they work on it in their own session, and
+# their record becomes the newest. On a tie of mtimes the caller's own record
+# wins, so a session is never told its own task is taken. A caller with no
+# session id of its own holds nothing, so every live record is another's.
+jig_checkout_taken() {
+  local id="$1" dir mtime f name best=-1 bestf="" age checkout since cmd
+  [ -n "$_JIG_TK_READY" ] || jig_checkout_taken_begin
+  [ -n "$_JIG_TK_ROOT" ] || return 0
+  jig_valid_id "$id" || return 0
+  dir="$_JIG_TK_ROOT/$JIG_AI_DIR/runtime/taken/$id"
+  [ -d "$dir" ] || return 0
+  while read -r mtime f; do
+    case "$mtime" in '' | *[!0-9]*) continue ;; esac
+    [ -f "$f" ] || continue
+    name=${f##*/}
+    jig_valid_id "$name" || continue
+    if [ "$_JIG_TK_NOW" -lt "$mtime" ]; then age=0; else age=$((_JIG_TK_NOW - mtime)); fi
+    [ "$age" -le "$_JIG_TK_TTL" ] || continue
+    if [ "$mtime" -gt "$best" ] \
+      || { [ "$mtime" -eq "$best" ] && [ -n "$_JIG_TK_SELF" ] && [ "$name" = "$_JIG_TK_SELF" ]; }; then
+      best=$mtime
+      bestf=$f
+    fi
+  done < <(_jig_checkout_mtimes "$dir"/*)
+  [ -n "$bestf" ] || return 0
+  name=${bestf##*/}
+  if [ -n "$_JIG_TK_SELF" ] && [ "$name" = "$_JIG_TK_SELF" ]; then return 0; fi
+  if [ "$_JIG_TK_NOW" -lt "$best" ]; then age=0; else age=$((_JIG_TK_NOW - best)); fi
+  # `-` for a key the record does not hold: a reader splits these lines on
+  # tabs, and `read` folds two adjacent tabs into one.
+  checkout="-" since="-" cmd="-"
+  if _jig_checkout_read "$bestf" checkout && [ -n "$_JIG_CHECKOUT_READ" ]; then checkout=$_JIG_CHECKOUT_READ; fi
+  if _jig_checkout_read "$bestf" since && [ -n "$_JIG_CHECKOUT_READ" ]; then since=$_JIG_CHECKOUT_READ; fi
+  if _jig_checkout_read "$bestf" command && [ -n "$_JIG_CHECKOUT_READ" ]; then cmd=$_JIG_CHECKOUT_READ; fi
+  printf '%s\t%s\t%s\t%s\n' "$checkout" "$since" "$age" "$cmd"
+  return 0
+}
+
+# --- reading --------------------------------------------------------------------
+
+# _jig_checkout_orienting <command-words...> — exit 0 for the commands a
+# session reads to find out where it is. They are the ones that owe a reader
+# the notice below, and they are named here rather than in the dispatcher:
+# which commands orient a reader is a fact about this record, not about
+# dispatching.
+#
+# `task start` is deliberately absent. It is the command that moves HEAD, and
+# printing the notice there would swallow the message meant for its neighbour.
+_jig_checkout_orienting() {
+  case "${1:-}" in
+    status) return 0 ;;
+    task)
+      case "${2:-}" in
+        current | list) return 0 ;;
+      esac
+      ;;
+  esac
+  return 1
+}
+
+# _jig_checkout_told_file — where the reader running this command keeps the
+# branch it was last told about.
+#
+# **Per session when the runtime names one**, and only shared when it does
+# not. What a reader knows is a fact about that reader, so one shared key is
+# answered by whoever looks first — including the session that moved HEAD in
+# the first place, which then consumes the only message its neighbour would
+# ever get. Measured: `task start T-1` followed by `task current` in the same
+# session took the message for itself and left the neighbour's `jig status`
+# silent. A session that switched the branch itself still gets one true line;
+# what it can no longer do is eat somebody else's.
+#
+# One file per session, so two sessions never rewrite each other's answer —
+# the same reason the work records are one file per piece of work.
+_jig_checkout_told_file() {
+  local runtime="$1" session="$2"
+  if [ -n "$session" ]; then
+    printf '%s/told/%s\n' "$runtime" "$session"
+  else
+    printf '%s/checkout\n' "$runtime"
+  fi
+}
+
+# jig_checkout_notice <command-words...> — print the one line a session is
+# owed when HEAD moved under it, and record that it has now been told.
+#
+# The second line matters as much as the first. Switching the branch back
+# pulls the tree out from under the session that just started work on it; the
+# way out is to give that task a worktree of its own.
+#
+# stderr, not stdout: `jig task current` prints an id that callers read as one
+# (ADR-0012), and an advisory must not become part of it.
+#
+# JIG_INTERNAL_REDRAW excludes the status page's own re-entry, the same guard
+# jig_checkout_record uses and for the same reason: `status --refresh` run
+# from jig_status_page_touch is not a reader orienting itself, and letting it
+# through consumed the moved-HEAD notice a neighbour was owed — silently,
+# since jig_status_page_touch discards this subprocess's stderr — before that
+# neighbour's own next orienting command ever ran
+# (adr-20260924-a-checkout-records-what-is-happening-in-it).
+jig_checkout_notice() {
+  [ -z "${JIG_INTERNAL_REDRAW:-}" ] || return 0
+  _jig_checkout_orienting "$@" || return 0
+  _jig_checkout_notice_inner || true
+  return 0
+}
+
+_jig_checkout_notice_inner() {
+  local runtime file head told body cmd session
+  _jig_checkout_ready || return 0
+  runtime=$(_jig_checkout_runtime)
+  head=$(_jig_checkout_head)
+  [ -n "$head" ] || return 0
+  session=$(jig_checkout_session)
+  file=$(_jig_checkout_told_file "$runtime" "$session")
+
+  told=$(_jig_checkout_value "$file" branch_reported)
+  if [ "$told" = "$head" ]; then
+    return 0
+  fi
+  if [ -n "$told" ]; then
+    printf 'checkout: HEAD here moved %s -> %s since you were told\n' "$told" "$head" >&2
+    printf '  another session may be working on this checkout; to give the branch\n' >&2
+    printf '  back, move that task to a worktree of its own with\n' >&2
+    printf '  "jig task start <id> --worktree" — do not just switch this checkout\n' >&2
+    printf '  back under it\n' >&2
+  fi
+
+  # A session's own file holds this one key and nothing else. The shared file
+  # is the checkout's record, so its `command:` is rewritten with it —
+  # from its parts rather than edited, which keeps one writer for one format.
+  if [ -n "$session" ]; then
+    [ -d "$runtime/told" ] || mkdir -p "$runtime/told" 2>/dev/null || return 0
+    _jig_checkout_write "$file" "branch_reported: $head
+" || true
+    return 0
+  fi
+  body=""
+  cmd=$(_jig_checkout_value "$file" command)
+  if [ -n "$cmd" ]; then
+    body="command: $cmd
+"
+  fi
+  [ -d "$runtime" ] || mkdir -p "$runtime" 2>/dev/null || return 0
+  _jig_checkout_write "$file" "$body""branch_reported: $head
+" || true
+  return 0
+}
+
+# jig_checkout_busy [<id to ignore>] — "<name> <seconds> <command>" for every
+# live record of work in this checkout, excluding the caller's own two names:
+# the task it is about to start, and this session's own id.
+#
+# A record older than the window is ignored rather than deleted. RULES.md lets
+# a script delete only a path it has checked to be a workspace or a trash
+# entry, and a file under runtime/working/ is neither; cleaning up after it is
+# a decision of its own, with its own line in that document.
+jig_checkout_busy() {
+  local ignore="${1:-}" runtime ttl self now head list mtime f name age cmd
+  _jig_checkout_ready || return 0
+  runtime=$(_jig_checkout_runtime)
+  [ -d "$runtime/working" ] || return 0
+  ttl=$(_jig_checkout_ttl)
+  self=$(jig_checkout_session)
+  now=$(date +%s)
+  head=$(_jig_checkout_head)
+  list=$(_jig_checkout_worktree_list)
+
+  while read -r mtime f; do
+    case "$mtime" in '' | *[!0-9]*) continue ;; esac
+    [ -f "$f" ] || continue
+    name=${f##*/}
+    # A walk over what is on disk checks every name with the validator that
+    # put it there and skips what fails, never trusting the directory
+    # (conventions/shell.md). Here it also keeps the output parsable: a caller
+    # reads these lines with `read -r name age cmd`, and a file name holding a
+    # space or a newline would silently become a different record.
+    jig_valid_id "$name" || continue
+    [ "$name" != "$ignore" ] || continue
+    if [ -n "$self" ] && [ "$name" = "$self" ]; then continue; fi
+    # A record is filtered here as well as at the point it is written,
+    # because it can become wrong afterwards — and does, in the one case that
+    # matters most: `jig task start <id> --worktree` runs *here*, records the
+    # work before the tree exists, and leaves the branch somewhere else a
+    # moment later. The reader is where the contradiction would be visible,
+    # so it is also where it is settled.
+    if _jig_checkout_task_elsewhere "$name" "$head" "$list"; then continue; fi
+    if [ "$now" -lt "$mtime" ]; then age=0; else age=$((now - mtime)); fi
+    [ "$age" -le "$ttl" ] || continue
+    cmd=""
+    if _jig_checkout_read "$f" command; then cmd="$_JIG_CHECKOUT_READ"; fi
+    [ -n "$cmd" ] || cmd="jig"
+    printf '%s %s %s\n' "$name" "$age" "$cmd"
+  done < <(_jig_checkout_mtimes "$runtime"/working/*)
+  return 0
+}
+
+# jig_checkout_occupants [<id to ignore>] [<parked-ids>] — the records of jig_checkout_busy
+# that occupy this checkout's HEAD, in the same "<name> <seconds> <command>"
+# lines. The one rule for every command that moves HEAD here: `task start`
+# and `upgrade` both refuse on it, and neither keeps a filter of its own
+# (adr-20260924-a-checkout-records-what-is-happening-in-it,
+# adr-20260930-an-upgrade-is-a-unit-of-work).
+#
+# A report may say "someone is here" on weak evidence; a refusal blocks a
+# person, so it is narrower: a record occupies HEAD when it is named by a task
+# that has been started (its state has a `branch`), is not `consolidated`,
+# `abandoned` or `archived`, and whose branch is the one checked out here. A record named by
+# a session id, a task that was only filed, a closed one, or one whose branch
+# went back to the base has no HEAD here to lose, whatever its age says.
+#
+# A task parked at the staging branch does not occupy it either: its work is
+# shipped, and it holds no current-task slot until `jig task resume` takes it
+# back (adr-20261112-a-task-waiting-at-staging-is-parked-and-resuming-it-is-its-status).
+# A dirty tree is still refused by `task start` itself. Which tasks are parked
+# is `jig task`'s answer, not this file's: the caller passes their ids in
+# <parked-ids> (task.sh's _task_parked_ids_here), newline-separated; a caller
+# that passes none, as `jig upgrade` does, counts a parked task's record too.
+#
+# State is read by the shell alone (_jig_checkout_read): this file never
+# sources task.sh, and a fork per record is the shape conventions/shell.md
+# forbids.
+jig_checkout_occupants() {
+  local ignore="${1:-}" parked="${2:-}" head name age cmd state nl=$'\n'
+  _jig_checkout_ready || return 0
+  head=$(_jig_checkout_head)
+  [ -n "$head" ] || return 0
+  while read -r name age cmd; do
+    [ -n "$name" ] || continue
+    case "$nl$parked$nl" in *"$nl$name$nl"*) continue ;; esac
+    state="$JIG_PROJECT/$JIG_AI_DIR/workspace/tasks/$name/state"
+    [ -f "$state" ] || continue
+    _jig_checkout_read "$state" status || _JIG_CHECKOUT_READ=""
+    case "$_JIG_CHECKOUT_READ" in consolidated | abandoned | archived) continue ;; esac
+    _jig_checkout_read "$state" branch || continue
+    [ "$_JIG_CHECKOUT_READ" = "$head" ] || continue
+    printf '%s %s %s\n' "$name" "$age" "$cmd"
+  done < <(jig_checkout_busy "$ignore")
+  return 0
+}
+
+# jig_checkout_here_task — the task whose branch is checked out here, empty
+# when none is. `jig status` excludes it from the list of work going on here:
+# the reader is sitting on it and does not need to be told.
+#
+# The refusals deliberately do *not* exclude it (jig_checkout_occupants). Two
+# sessions in one checkout, one of them on another task's branch, is the case
+# that has to be caught, and hiding that task's record would hide exactly it.
+jig_checkout_here_task() {
+  _jig_checkout_ready || return 0
+  _jig_checkout_name_from_head "$(_jig_checkout_head)" || printf ''
+}

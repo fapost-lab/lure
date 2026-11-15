@@ -1,0 +1,5 @@
+.ai/workspace
+.ai/runtime
+.ai/config.local.yaml
+*.log
+.claude/worktrees/

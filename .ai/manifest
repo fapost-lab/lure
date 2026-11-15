@@ -8,6 +8,8 @@ instructions.section: 2d4f583210c689df326ecf2b6d4a04abc11440a1 AGENTS.md
 ---
 e4bc86fa075a7e17b2f8c05813c4bf1b9c258072 .ai/profiles/generic/profile.yaml
 26389e86011b7a0beef665ad3a2bd5739fdabf21 .ai/profiles/generic/verify.sh
+e04f04ed2d43f7722e775789be8b3ee1984b642a .ai/profiles/node/profile.yaml
+915bfabfe95bf59e78134dd2b23f499faa4184fc .ai/profiles/node/verify.sh
 f851820b7c261885caf06aefae51c8f1dcd50e85 .ai/scripts/jig
 980660d100d8f5ad3c7c62109d1fdb65322048fe .ai/scripts/jig-notify-hook
 0464f3688bd9fd70b316635e3f0ce112b3869552 .ai/scripts/jig-session-hook

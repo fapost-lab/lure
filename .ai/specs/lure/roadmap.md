@@ -19,7 +19,7 @@ and the author learns it from a Telegram message without having asked.
   lands in a workspace)
 - [ ] `hypothesis-baseline` — Hypothesis with baseline: `lure-hypothesis` records what changes, where and why, snapshots
   the baseline, picks control pages, states the traffic floor and sets the check date (after:
-  Search Console access — the baseline is read from it)
+  `search-console-access` — the baseline is read from it)
 - [ ] `scheduled-check` — Scheduled check: `lure-check` runs on a local schedule, confirms the change is live and
   re-crawled, measures against baseline and controls, marks Google updates in the window, gives
   a verdict with confidence, and catches up on missed runs (after: `hypothesis-baseline` — it

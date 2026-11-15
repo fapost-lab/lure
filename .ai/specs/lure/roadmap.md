@@ -11,23 +11,23 @@ Goal: the author's two products run the full loop with no CLI — skills, a mark
 local schedule. Done when: a hypothesis on the company website reaches a verdict on schedule,
 and the author learns it from a Telegram message without having asked.
 
-- [ ] Product workspace — `lure-init` creates a product's folder, drafts its profile from the
+- [ ] `product-workspace` — Product workspace: `lure-init` creates a product's folder, drafts its profile from the
   website's address for the person to correct, and installs audit tools from the vetted list
   (or by link, with a warning)
-- [ ] Search Console access — connect through the author's Google Cloud project, and import the
-  company data already collected as the first baseline (after: Product workspace — the data
+- [ ] `search-console-access` — Search Console access: connect through the author's Google Cloud project, and import the
+  company data already collected as the first baseline (after: `product-workspace` — the data
   lands in a workspace)
-- [ ] Hypothesis with baseline — `lure-hypothesis` records what changes, where and why, snapshots
+- [ ] `hypothesis-baseline` — Hypothesis with baseline: `lure-hypothesis` records what changes, where and why, snapshots
   the baseline, picks control pages, states the traffic floor and sets the check date (after:
-  Search Console access — the baseline is read from it)
-- [ ] Scheduled check — `lure-check` runs on a local schedule, confirms the change is live and
+  `search-console-access` — the baseline is read from it)
+- [ ] `scheduled-check` — Scheduled check: `lure-check` runs on a local schedule, confirms the change is live and
   re-crawled, measures against baseline and controls, marks Google updates in the window, gives
-  a verdict with confidence, and catches up on missed runs (after: Hypothesis with baseline — it
+  a verdict with confidence, and catches up on missed runs (after: `hypothesis-baseline` — it
   measures recorded hypotheses)
-- [ ] Telegram notice — the check reports what it measured and what needs the person, and the
-  person can answer in the chat (after: Scheduled check — it reports the check's results)
-- [ ] Playbook — lessons enter only after two consistent results, carry sample size, date and
-  site, and are retracted when later results contradict them (after: Scheduled check — lessons
+- [ ] `telegram-notice` — Telegram notice: the check reports what it measured and what needs the person, and the
+  person can answer in the chat (after: `scheduled-check` — it reports the check's results)
+- [ ] `playbook-lessons` — Playbook: lessons enter only after two consistent results, carry sample size, date and
+  site, and are retracted when later results contradict them (after: `scheduled-check` — lessons
   come from verdicts)
 - [ ] fog: changing a WordPress site — instructions to the person, the REST API or a plugin;
   needs the company's answer on who approves changes, and a look at how often the log drifts
@@ -83,11 +83,11 @@ recorded hypothesis.
 
 ## Waves
 
-1. Product workspace
-2. Search Console access
-3. Hypothesis with baseline
-4. Scheduled check
-5. Telegram notice; Playbook; Interview to draft
+1. product-workspace
+2. search-console-access
+3. hypothesis-baseline
+4. scheduled-check
+5. telegram-notice; playbook-lessons; Interview to draft
 6. Voice profile; Channel configuration
 7. Telegram channel; LinkedIn drafts
 8. Channel measurement; Search Console without Google Cloud; Installer; Documentation

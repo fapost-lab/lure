@@ -1,0 +1,9 @@
+{
+  "name": "lure",
+  "version": "0.1.0",
+  "description": "Set up a product workspace, install vetted audit tools, and run Lure's measured promotion loop.",
+  "author": { "name": "fapost-lab", "url": "https://github.com/fapost-lab" },
+  "homepage": "https://github.com/fapost-lab/lure",
+  "repository": "https://github.com/fapost-lab/lure",
+  "keywords": ["seo", "marketing", "experiments"]
+}

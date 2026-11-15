@@ -5,8 +5,18 @@ and posts on the channels its audience reads. Agents research, plan and draft; y
 whatever goes public; weeks later Lure measures what each change did and keeps the lesson for
 the next round.
 
-**Status: design.** There is no code yet. The specification is being written in
-`.ai/specs/`; until it is, nothing here can be installed or run.
+**Status: early beta.** The first skill, `/lure:init`, sets up a product's workspace. The
+plan is in `.ai/specs/lure/`.
+
+## Try it (Claude Code)
+
+```
+claude plugin marketplace add fapost-lab/lure
+claude plugin install lure@lure
+```
+
+Then, in a Claude Code session in any folder, run `/lure:init` and name your website. Until the
+first tagged release this installs whatever is on `main`.
 
 ## The idea
 

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "lure",
+  "owner": { "name": "fapost-lab" },
+  "metadata": {
+    "description": "Lure: promote a product with AI agents, measuring every change as a hypothesis."
+  },
+  "plugins": [
+    {
+      "name": "lure",
+      "source": "./plugins/lure",
+      "description": "Set up a product workspace, install vetted audit tools, and run Lure's measured promotion loop.",
+      "category": "marketing",
+      "homepage": "https://github.com/fapost-lab/lure"
+    }
+  ]
+}

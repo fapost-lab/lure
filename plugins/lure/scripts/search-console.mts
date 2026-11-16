@@ -282,6 +282,32 @@ export async function query(
   }
 }
 
+// URL Inspection: what Google's index holds for one page — never the live page itself.
+const INSPECT = "https://searchconsole.googleapis.com/v1/urlInspection/index:inspect";
+
+export type Inspection = {
+  lastCrawlTime: string | null; pageFetchState: string | null; googleCanonical: string | null; coverageState: string | null;
+};
+
+export async function inspect(token: string, property: string, url: string, f: Fetch = fetch): Promise<Inspection> {
+  const res = await f(INSPECT, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ inspectionUrl: url, siteUrl: property }),
+  });
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new LureError(`URL Inspection refused (${res.status}): ${json.error?.message ?? res.statusText}`);
+  }
+  const r = json.inspectionResult?.indexStatusResult ?? {};
+  return {
+    lastCrawlTime: r.lastCrawlTime ?? null,
+    pageFetchState: r.pageFetchState ?? null,
+    googleCanonical: r.googleCanonical ?? null,
+    coverageState: r.coverageState ?? null,
+  };
+}
+
 // ---- CSV ----------------------------------------------------------------------------------
 
 export function csvField(v: string | number): string {

@@ -26,7 +26,9 @@ searching the disk. Task `product-workspace`, design approved 2026-11-15.
 - `journal.md` is append-only: one line per action with how to undo it — the record Lure keeps
   when there is no git.
 - The registry `~/.lure/workspaces.yaml` lists each workspace's product name and absolute path.
-  It is the one place Lure writes outside a workspace, and it holds names and paths only, never
+  It was the first place Lure writes outside a workspace (credentials, the engine copy and run
+  logs followed: adr-20261116-search-console-oauth-and-local-secrets,
+  adr-20261117-scheduled-check-is-code-without-a-model), and it holds names and paths only, never
   product data.
 - In a workspace that already is a git repository, Lure commits only the files it wrote, named by
   pathspec, after checking what the person had staged; it never runs `git init` and never pushes.

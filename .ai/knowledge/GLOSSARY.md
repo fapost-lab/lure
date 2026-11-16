@@ -112,17 +112,48 @@ Use in: source code, documentation.
 ## Check
 
 The scheduled step that confirms a hypothesis's change is live and re-crawled, measures it
-against baseline and controls, and gives a verdict.
+against baseline and controls, and gives a verdict. It runs daily as `check.mts`, with no
+model (adr-20261117-scheduled-check-is-code-without-a-model). One run of it is a *check run*.
 
-Informal synonyms: measurement, measure, review.
+Informal synonyms: review. ("Measurement" is the domain the check belongs to; "measure" is the
+step that computes a verdict, `measure.mts`.)
 Use in: source code, documentation.
 
 ## Verdict
 
-The result of a check: "noticeable gain", "no signal" or "worse", with confidence, sample size
-and effect. Never a bare "worked".
+The result of a check: "noticeable gain", "no signal" or "worse" (or "insufficient history"),
+with confidence, sample size and effect. Never a bare "worked". In code the labels are
+`noticeable_gain`, `no_signal`, `worse` and `insufficient_history`
+(adr-20261117-verdict-by-placebo-windows).
 
 Informal synonyms: result, outcome.
+Use in: source code, documentation.
+
+## Placebo window
+
+An earlier pair of before and after windows from the page's own history, with no change in it.
+The spread of the page-against-controls shift across placebo windows is the check's measure of
+noise: it gives the verdict's interval and the smallest effect the page can show.
+
+Informal synonyms: past period, null window.
+Use in: source code, documentation.
+
+## Live date
+
+`live_on`: the day a hypothesis's change reached the public site. The check sees it as the
+`live_marker` appearing on the page, or the person says it. It can change until Google
+re-crawls the page (`crawled_on`); after that the measurement windows are fixed.
+
+Informal synonyms: deploy date, release date, go-live.
+Use in: source code, documentation.
+
+## Engine copy
+
+`~/.lure/engine/`: the scripts the scheduled job runs, copied from the plugin with their version
+and hashes so the schedule survives a plugin reinstall. It is stale when it is older than the
+plugin.
+
+Informal synonyms: installed engine.
 Use in: source code, documentation.
 
 ## Lesson

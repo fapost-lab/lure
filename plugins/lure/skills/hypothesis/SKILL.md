@@ -21,6 +21,14 @@ account in `.lure/search-console.yaml`:
 
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/search-console.mts" pull --account <e-mail> --property <property> --workspace <dir>`
 
+If the workspace has active hypotheses, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/check.mts" status
+--workspace <dir>` too. On macOS also run `node "${CLAUDE_PLUGIN_ROOT}/scripts/schedule.mts" show`.
+Tell the person and offer `/lure:check` in either case:
+
+- the check has never run, or has not run for days: nothing measures their hypotheses until it
+  does;
+- the engine copy is stale: the schedule runs an older Lure.
+
 ## 2. What changes
 
 The idea comes from the person, or from an audit report they point to. Ask what you do not
@@ -116,3 +124,6 @@ status back). Then git, by [the rule](../init/references/workspace-format.md#git
 
 Say what was recorded, the metric and floor, the controls, and the check date. Remind the person
 that the change itself is theirs to make; the check will look for `live_marker` to see it live.
+If the page does not open for Lure, or the person would rather give the date, they tell it
+through `/lure:check` once the change is out. If no schedule is installed yet, offer
+`/lure:check` to install one.

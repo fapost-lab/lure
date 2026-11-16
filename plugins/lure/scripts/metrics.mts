@@ -106,7 +106,7 @@ export function addDays(date: string, days: number): string {
 }
 
 // A real calendar date: "2026-02-30" parses in JavaScript but is not one.
-const isDate = (s: unknown) =>
+export const isDate = (s: unknown) =>
   typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s)) &&
   new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 
@@ -150,7 +150,7 @@ export function windowFor(ws: string, page: string, from?: string, to?: string) 
 
 // ---- The header: a block-style YAML subset this module writes and reads -------------------
 
-type Value = string | number | boolean | null | Value[] | { [k: string]: Value };
+export type Value = string | number | boolean | null | Value[] | { [k: string]: Value };
 
 function scalar(v: string | number | boolean | null): string {
   if (v === null) return "null";
@@ -438,6 +438,101 @@ export function abandon(ws: string, id: string, reason: string, today: string): 
   h!.header.abandon_reason = reason.trim();
   writeAtomic(h!.path, joinFile(h!.header, h!.body));
   return h!.path;
+}
+
+// ---- What the check writes ----------------------------------------------------------------
+// The scheduled check (check.mts) decides; these functions only validate and write, so the
+// header keeps one writer. They return true when the file changed, which keeps a second run
+// on the same day from touching anything.
+
+function find(ws: string, id: string): Hyp {
+  const h = readHypotheses(ws).find((h) => h.header.id === id);
+  need(h, `no hypothesis ${id}`);
+  return h!;
+}
+
+function save(h: Hyp, before: string): boolean {
+  const text = joinFile(h.header, h.body);
+  if (text === before) return false;
+  writeAtomic(h.path, text);
+  return true;
+}
+
+// The change is live since `liveOn`: seen on the page by the check, or said by the person.
+// A person may correct the date while Google has not re-crawled the page yet.
+export function markLive(ws: string, id: string, liveOn: string, source: "marker" | "person", today: string): boolean {
+  const h = find(ws, id);
+  const before = joinFile(h.header, h.body);
+  need(source === "marker" || source === "person", "source: marker or person");
+  need(isDate(liveOn), "the live date must be a date");
+  need(liveOn >= h.header.recorded, `the live date cannot be before the hypothesis was recorded (${h.header.recorded})`);
+  need(liveOn <= today, "the live date cannot be in the future");
+  const correctable = h.header.status === "planned" || (h.header.status === "live" && !h.header.crawled_on);
+  need(correctable, `${id} is ${h.header.status}${h.header.crawled_on ? `, re-crawled ${h.header.crawled_on}` : ""}; its live date can no longer change`);
+  if (source === "marker" && h.header.status === "live") return false; // the person's date stands
+  h.header.status = "live";
+  h.header.live_on = liveOn;
+  h.header.live_source = source;
+  delete h.header.waiting;
+  return save(h, before);
+}
+
+// The check opened the page and the marker was not there yet: the live date is later than this.
+export function markAbsent(ws: string, id: string, today: string): boolean {
+  const h = find(ws, id);
+  const before = joinFile(h.header, h.body);
+  need(h.header.status === "planned", `${id} is ${h.header.status}, not planned`);
+  h.header.live_absent_on = today;
+  return save(h, before);
+}
+
+export type Windows = { before: { from: string; to: string }; after: { from: string; to: string }; checkOn: string };
+
+// Google re-crawled the page after the change: the measurement windows are now fixed.
+export function markCrawled(ws: string, id: string, crawledOn: string, w: Windows): boolean {
+  const h = find(ws, id);
+  const before = joinFile(h.header, h.body);
+  need(h.header.status === "live", `${id} is ${h.header.status}, not live`);
+  need(isDate(crawledOn) && crawledOn > h.header.live_on, "the crawl must be after the live date");
+  need([w.before.from, w.before.to, w.after.from, w.after.to, w.checkOn].every(isDate), "windows: dates");
+  h.header.crawled_on = crawledOn;
+  h.header.before_window = { from: w.before.from, to: w.before.to };
+  h.header.after_window = { from: w.after.from, to: w.after.to };
+  h.header.check_on = w.checkOn;
+  delete h.header.waiting;
+  return save(h, before);
+}
+
+// Why the check is waiting (null clears it), and warnings that stay until the verdict.
+export function setWaiting(ws: string, id: string, reason: string | null, warnings: string[] = []): boolean {
+  const h = find(ws, id);
+  const before = joinFile(h.header, h.body);
+  need(ACTIVE.includes(h.header.status), `${id} is ${h.header.status}, not active`);
+  if (reason === null) delete h.header.waiting;
+  else h.header.waiting = reason;
+  const all = [...(h.header.warnings ?? [])];
+  for (const w of warnings) if (!all.includes(w)) all.push(w);
+  if (all.length > 0) h.header.warnings = all;
+  return save(h, before);
+}
+
+// The verdict: written once, after the after-window is covered by final data.
+export function writeVerdict(ws: string, id: string, verdict: { [k: string]: Value }, today: string): boolean {
+  const h = find(ws, id);
+  need(h.header.status === "live" && h.header.crawled_on, `${id} is not live and re-crawled; nothing to measure`);
+  for (const k of ["label", "effect", "low", "high", "mde", "past", "page", "controls"]) {
+    need(k in verdict, `a verdict needs ${k}: label, effect, interval and sample size together`);
+  }
+  // Only "insufficient history" may lack an interval: there were no earlier periods to take it from.
+  if (verdict.label !== "insufficient_history") {
+    need([verdict.low, verdict.high, verdict.mde].every((x) => typeof x === "number"),
+      "a verdict other than insufficient_history needs its interval (low, high) and mde");
+  }
+  h.header.status = "measured";
+  delete h.header.waiting;
+  h.header.verdict = { ...verdict, measured_on: today };
+  writeAtomic(h.path, joinFile(h.header, h.body));
+  return true;
 }
 
 // ---- Command line -------------------------------------------------------------------------

@@ -103,3 +103,8 @@ its undo. Then git, by [the rule](../init/references/workspace-format.md#git): t
 Say which property is connected through which account, how many days were pulled and from when,
 what the reconciliation showed, and what comes next: recording the first hypothesis with
 `/lure:hypothesis`.
+
+If the workspace already has active hypotheses (`hypotheses/`), also run
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/check.mts" status --workspace <dir>`, and on macOS
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/schedule.mts" show`. Say if the check has not run for days,
+or if the engine copy is stale, and offer `/lure:check`.

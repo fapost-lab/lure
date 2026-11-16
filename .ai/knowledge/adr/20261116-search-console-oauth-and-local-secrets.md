@@ -30,7 +30,9 @@ the machine. Task `search-console-access`, design approved 2026-11-16.
   (`metrics.search_console.property`) and, locally in `.lure/`, the account that reads it.
 - Skills never read, print or copy credential files; they move a downloaded client file into
   place without reading it. Lure's scripts print the account's e-mail and summaries only.
-- `~/.lure/` is Lure's per-machine folder: the registry and the credentials, never product data.
+- `~/.lure/` is Lure's per-machine folder: the registry and the credentials — later also the
+  engine copy and run logs (adr-20261117-scheduled-check-is-code-without-a-model) — never
+  product data.
 
 ## Alternatives
 

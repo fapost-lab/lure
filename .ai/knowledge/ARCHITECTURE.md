@@ -23,6 +23,10 @@ without SEO or development experience; the author is the beta tester. Source: sp
   properties and pulls daily history into the workspace's `search-console/` folder; earlier
   notes are reconciled with it and their outside events go to `events.md`
   (adr-20261116-search-console-oauth-and-local-secrets).
+- **Hypotheses** (recording) — `/lure:hypothesis` writes one file per hypothesis with its
+  baseline, controls, traffic floor and provisional check date; `plugins/lure/scripts/metrics.mts`
+  does the arithmetic and writes the header (adr-20261116-hypothesis-log-format). Marking a
+  change live and measuring it belong to the check, not built yet.
 - Lure itself is a Claude Code plugin in this repository's marketplace
   (adr-20261115-distributed-as-a-claude-code-plugin). It is skills and Markdown, plus one
   dependency-free Node script where a skill could not do without code

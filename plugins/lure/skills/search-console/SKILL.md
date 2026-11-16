@@ -101,4 +101,5 @@ its undo. Then git, by [the rule](../init/references/workspace-format.md#git): t
 ## 8. Report
 
 Say which property is connected through which account, how many days were pulled and from when,
-what the reconciliation showed, and what comes next: recording the first hypothesis.
+what the reconciliation showed, and what comes next: recording the first hypothesis with
+`/lure:hypothesis`.

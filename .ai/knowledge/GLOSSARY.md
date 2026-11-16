@@ -95,7 +95,8 @@ Use in: source code, documentation.
 ## Control page
 
 A page left untouched during a hypothesis, measured over the same window, so that what moved
-everything is not credited to the change.
+everything is not credited to the change. A page may be a control of several hypotheses, but never while it is the
+page of an active one.
 
 Informal synonyms: control.
 Use in: source code, documentation.
@@ -103,7 +104,7 @@ Use in: source code, documentation.
 ## Traffic floor
 
 The statement, made when a hypothesis is recorded, of whether its page has enough traffic to
-show any effect within the measurement window.
+show any effect within the measurement window. One of `measurable`, `weak`, `below`.
 
 Informal synonyms: minimum traffic.
 Use in: source code, documentation.

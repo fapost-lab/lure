@@ -34,6 +34,32 @@ A workspace's append-only `journal.md`: one line per action Lure took, with how 
 Informal synonyms: log, history, changelog.
 Use in: source code, documentation.
 
+## Property
+
+A site as Search Console knows it, named exactly as Google names it: a Domain property
+(`sc-domain:example.com`) or a URL-prefix property (`https://example.com/`). One site may have
+both, with different histories; a workspace reads one.
+
+Informal synonyms: site, GSC account, resource.
+Use in: source code, documentation.
+
+## Outside event
+
+Something that moved a site's search traffic and is not one of Lure's own changes — an outage,
+a blocked crawler, a migration, a sitemap sent, a Google update. Kept in a workspace's
+`events.md` with its date and source, so a check can mark it in a hypothesis's window.
+
+Informal synonyms: incident, external factor.
+Use in: source code, documentation.
+
+## Credentials
+
+What lets Lure read a service as the person — an OAuth client, tokens, API keys. They live under
+`~/.lure/<service>/`, readable by the owner only, never in a workspace and never read by an agent.
+
+Informal synonyms: secrets, keys, tokens.
+Use in: source code, documentation.
+
 ## Product profile
 
 What Lure knows about a product: what it is, its audience, voice, competitors and the claims it

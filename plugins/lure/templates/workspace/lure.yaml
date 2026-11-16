@@ -1,0 +1,9 @@
+# Lure workspace settings, format version 1. Edit by hand only if you know the format.
+lure: 1
+product: <name>
+site: <https://…>
+language: <ru | en | …>
+channels:
+  site:
+    mode: <pr | draft>
+tools: []

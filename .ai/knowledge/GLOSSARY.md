@@ -19,6 +19,21 @@ drafts; it lives outside the engine and may or may not be a git repository.
 Informal synonyms: project, product folder.
 Use in: source code, documentation.
 
+## Registry
+
+The per-machine list of workspaces, `~/.lure/workspaces.yaml`: product name and path, nothing
+else. Scheduled steps find workspaces through it.
+
+Informal synonyms: workspace list, index.
+Use in: source code, documentation.
+
+## Journal
+
+A workspace's append-only `journal.md`: one line per action Lure took, with how to undo it.
+
+Informal synonyms: log, history, changelog.
+Use in: source code, documentation.
+
 ## Product profile
 
 What Lure knows about a product: what it is, its audience, voice, competitors and the claims it

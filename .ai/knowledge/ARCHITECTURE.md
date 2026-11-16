@@ -11,9 +11,20 @@ baseline, checked on schedule against control pages, and turned into lessons in 
 playbook. Audits and drafting come from third-party tools. Its users are product owners
 without SEO or development experience; the author is the beta tester. Source: spec `lure`.
 
+## Built
+
+- **Workspace** — `/lure:init` creates a product's folder in format version 1, registers it in
+  `~/.lure/workspaces.yaml`, and commits its own files when the folder already is a git
+  repository (adr-20261115-workspace-format-and-registry).
+- **Tools** — the vetted list (`plugins/lure/vetted-tools.md`) and pinned installation of
+  third-party Claude Code plugins, checked against the pinned commit.
+- Lure itself is a Claude Code plugin in this repository's marketplace
+  (adr-20261115-distributed-as-a-claude-code-plugin). All of it is skills and Markdown; there is
+  no code yet.
+
 ## Intended — not built yet
 
-Nothing below exists yet. The task that builds a part moves it out of this heading.
+The task that builds a part moves it out of this heading.
 
 ### Domains
 
@@ -25,9 +36,8 @@ Nothing below exists yet. The task that builds a part moves it out of this headi
 - **Playbook** — turns verdicts into lessons under the two-results rule, and retracts them.
 - **Content** — interview, draft in the person's voice, fact check, approval.
 - **Channels** — one adapter per platform, each with its publishing modes and platform cap.
-- **Tools** — the vetted list; installing and running third-party audit and drafting tools.
-- **Workspace** — reading and writing a product's folder, and committing when it is a git
-  repository.
+- **Tools** — running third-party audit and drafting tools and turning their findings into
+  candidates (installing them is built).
 
 The first phase builds these as skills over Markdown files, with no CLI
 (adr-20261115-typescript-on-node); the domains are the same either way.
@@ -41,7 +51,8 @@ The first phase builds these as skills over Markdown files, with no CLI
   and Playbook as material; Channels publish what Content produced. Nothing points back up the
   chain.
 - The engine never reads or writes product data outside a workspace
-  (adr-20261115-engine-apart-from-workspaces), and never calls a model
+  (adr-20261115-engine-apart-from-workspaces); the one write outside is the registry of
+  workspace names and paths (adr-20261115-workspace-format-and-registry). It never calls a model
   (adr-20261115-agent-runtime-calls-the-model).
 
 ### Runtime flows
@@ -54,8 +65,10 @@ The first phase builds these as skills over Markdown files, with no CLI
 2. **Content.** Material from the log and playbook → an interview with the person → a draft in
    their voice → fact check → the person approves → each channel publishes within its mode and
    cap.
-3. **Init.** A workspace is created → the profile is drafted from the website's address for the
-   person to correct → tools are offered from the vetted list → metrics sources are connected.
+3. **Init** (built, except the last step). A workspace is created → the profile is drafted from
+   the website's address for the person to correct → tools are offered from the vetted list and
+   installed after a yes → the workspace is committed if it is a git repository → metrics
+   sources are connected (search-console-access).
 
 ## System-wide constraints and invariants
 

@@ -77,4 +77,4 @@ Append the result to `journal.md` first. Then git, by [the rule](references/work
 ## 6. Report
 
 Say what the workspace holds, where it is, which tools were installed at which version, whether
-it was committed, and what comes next: connecting Search Console.
+it was committed, and what comes next: connecting Search Console with `/lure:search-console`.

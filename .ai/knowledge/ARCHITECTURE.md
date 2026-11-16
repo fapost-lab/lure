@@ -18,9 +18,15 @@ without SEO or development experience; the author is the beta tester. Source: sp
   repository (adr-20261115-workspace-format-and-registry).
 - **Tools** — the vetted list (`plugins/lure/vetted-tools.md`) and pinned installation of
   third-party Claude Code plugins, checked against the pinned commit.
+- **Search Console** — the first metrics adapter. `/lure:search-console` guides the person
+  through their own OAuth client, and `plugins/lure/scripts/search-console.mts` signs in, lists
+  properties and pulls daily history into the workspace's `search-console/` folder; earlier
+  notes are reconciled with it and their outside events go to `events.md`
+  (adr-20261116-search-console-oauth-and-local-secrets).
 - Lure itself is a Claude Code plugin in this repository's marketplace
-  (adr-20261115-distributed-as-a-claude-code-plugin). All of it is skills and Markdown; there is
-  no code yet.
+  (adr-20261115-distributed-as-a-claude-code-plugin). It is skills and Markdown, plus one
+  dependency-free Node script where a skill could not do without code
+  (adr-20261116-code-enters-before-the-cli).
 
 ## Intended — not built yet
 
@@ -51,8 +57,9 @@ The first phase builds these as skills over Markdown files, with no CLI
   and Playbook as material; Channels publish what Content produced. Nothing points back up the
   chain.
 - The engine never reads or writes product data outside a workspace
-  (adr-20261115-engine-apart-from-workspaces); the one write outside is the registry of
-  workspace names and paths (adr-20261115-workspace-format-and-registry). It never calls a model
+  (adr-20261115-engine-apart-from-workspaces); its only writes outside are to `~/.lure/`: the
+  registry of workspace names and paths (adr-20261115-workspace-format-and-registry) and
+  credentials (adr-20261116-search-console-oauth-and-local-secrets). It never calls a model
   (adr-20261115-agent-runtime-calls-the-model).
 
 ### Runtime flows
@@ -65,10 +72,10 @@ The first phase builds these as skills over Markdown files, with no CLI
 2. **Content.** Material from the log and playbook → an interview with the person → a draft in
    their voice → fact check → the person approves → each channel publishes within its mode and
    cap.
-3. **Init** (built, except the last step). A workspace is created → the profile is drafted from
+3. **Init** (built). A workspace is created → the profile is drafted from
    the website's address for the person to correct → tools are offered from the vetted list and
    installed after a yes → the workspace is committed if it is a git repository → metrics
-   sources are connected (search-console-access).
+   sources are connected — Search Console, by `/lure:search-console`.
 
 ## System-wide constraints and invariants
 

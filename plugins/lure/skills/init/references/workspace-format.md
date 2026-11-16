@@ -16,6 +16,8 @@ does not know it leaves it alone, and a workspace without it means the feature i
   search-console/   # optional: daily history pulled from Search Console
     site-daily.csv
     pages-daily.csv
+  hypotheses/       # optional: one file per hypothesis
+    <YYYY-MM-DD>-<slug>.md
   .lure/        # this machine's local state; never committed
 ```
 
@@ -89,6 +91,32 @@ Pulled by `/lure:search-console`; final data only, web search, dates in Google's
 
 Rows are sorted by date (then page). A pull appends whole days after the last one in each file
 and never rewrites earlier rows. A day with no impressions has no row.
+
+## hypotheses/
+
+One Markdown file per hypothesis, named by its id `<date recorded>-<slug>`. The header between
+`---` lines is written only by Lure's `metrics.mts`, in block style, and carries its own format
+version, `lure_hypothesis: 1`:
+
+- `id`, `status` (`planned` → `live` → `measured`, or `abandoned`), `page`, `change`,
+  `recorded`, `planned_live`, `check_on` (provisional: `planned_live` + 28 + 3 days);
+- `metric` and `expected`, optional `secondary` and `secondary_expected` — metrics `clicks`,
+  `impressions`, `position`; directions `up`, `down` (`position` down is better);
+- `window_days`, `floor` (`measurable`, `weak`, `below`) and `floor_reason`;
+- `live_marker` — text that is on the page only once the change is live;
+- `before` — `title`, `h1`, `description` of the page before the change;
+- `baseline` — `from`, `to`, and for `page` and `site`: `days`, `clicks`, `impressions`, `ctr`,
+  `position` (position weighted by impressions);
+- `controls` — a list, each with `page` and the same figures over the baseline window; a control
+  taken away by a later hypothesis gains `released` and `released_because`;
+- `events` — lines of `events.md` inside the baseline window;
+- when abandoned: `abandoned` and `abandon_reason`.
+
+Below the header, the person's prose: why it should help, what exactly changes, how to undo it,
+what is at risk.
+
+Rules: one active (`planned` or `live`) hypothesis per page; a page that is the page of an
+active hypothesis is never a control; a page may be a control of several hypotheses.
 
 ## .lure/
 

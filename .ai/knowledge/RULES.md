@@ -22,7 +22,10 @@ Most checks below are review. Where code carries a rule, its tests do too (`npm 
   a verdict. (spec `lure`) Checked: review of the check's output format.
 - A check measures only after confirming the change is live and the page was re-crawled after
   it; otherwise it waits. (spec `lure`) Checked: review.
-- One hypothesis per page at a time. (spec `lure`) Checked: review of hypothesis recording.
+- One active hypothesis per page at a time; the page of an active hypothesis is never a control.
+  (spec `lure`, adr-20261116-hypothesis-log-format) Checked: tests of `metrics.mts record`.
+- Numbers in a hypothesis file come from the script, never typed by an agent.
+  (adr-20261116-hypothesis-log-format) Checked: review of the hypothesis skill.
 - A lesson enters the playbook only after two consistent verdicts, with sample size, date and
   site; lessons never transfer between products on their own. (spec `lure`) Checked: review.
 - Lure commits only in a workspace that already is a git repository, and never runs `git init`.

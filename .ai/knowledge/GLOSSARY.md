@@ -166,9 +166,27 @@ Use in: source code, documentation.
 
 ## Playbook
 
-A product's lessons; the next plan starts from it.
+A product's lessons, one file each in its workspace's `playbook/` folder; the next plan starts
+from it.
 
 Informal synonyms: knowledge base, notes.
+Use in: source code, documentation.
+
+## In doubt
+
+A lesson whose linked tests came back not confirmed (no signal, insufficient history or an
+unreliable verdict) at least as often as it has evidence. It stays active until the person
+retracts it.
+
+Informal synonyms: weak lesson.
+Use in: source code, documentation.
+
+## Retracted
+
+A lesson withdrawn, automatically by a linked test with the opposite significant label, or by
+the person. It stays in the playbook as history and is never used again.
+
+Informal synonyms: deleted, rejected.
 Use in: source code, documentation.
 
 ## Channel

@@ -26,7 +26,7 @@ and the author learns it from a Telegram message without having asked.
   measures recorded hypotheses)
 - [ ] `telegram-notice` — Telegram notice: the check reports what it measured and what needs the person, and the
   person can answer in the chat (after: `scheduled-check` — it reports the check's results)
-- [ ] `playbook-lessons` — Playbook: lessons enter only after two consistent results, carry sample size, date and
+- [x] `playbook-lessons` — Playbook: lessons enter only after two consistent results, carry sample size, date and
   site, and are retracted when later results contradict them (after: `scheduled-check` — lessons
   come from verdicts)
 - [ ] fog: changing a WordPress site — instructions to the person, the REST API or a plugin;

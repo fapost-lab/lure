@@ -306,7 +306,7 @@ export type RecordInput = {
   to?: string;
 };
 
-function writeAtomic(path: string, text: string): void {
+export function writeAtomic(path: string, text: string): void {
   const tmp = `${path}.part`;
   writeFileSync(tmp, text);
   renameSync(tmp, path);

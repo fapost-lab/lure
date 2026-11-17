@@ -18,11 +18,12 @@ does not know it leaves it alone, and a workspace without it means the feature i
     pages-daily.csv
   hypotheses/       # optional: one file per hypothesis
     <YYYY-MM-DD>-<slug>.md
+  playbook/         # optional: one file per lesson
+    <YYYY-MM-DD>-<slug>.md
   .lure/        # this machine's local state; never committed
 ```
 
-Later steps add their own files here (the hypothesis log, the playbook). A file this version
-does not name is left alone.
+Later steps add their own files here. A file this version does not name is left alone.
 
 ## lure.yaml
 
@@ -134,6 +135,35 @@ what is at risk.
 
 Rules: one active (`planned` or `live`) hypothesis per page; a page that is the page of an
 active hypothesis is never a control; a page may be a control of several hypotheses.
+
+## playbook/
+
+One Markdown file per lesson, named by its id `<date created>-<slug>`. A workspace without the
+folder has no lessons yet. The header between `---` lines is written only by Lure's
+`playbook.mts`, in the same block style as a hypothesis, and carries its own format version,
+`lure_lesson: 1`:
+
+- `id`, `status` (`active` or `retracted`), `statement` (the lesson in one sentence),
+  `change_kind`;
+- `direction` — `gain` (its evidence is `noticeable_gain`) or `loss` (`worse`); `metric` — the
+  primary metric of every hypothesis behind it;
+- `site` — the product's site, from `lure.yaml`; a lesson never moves to another workspace;
+- `created`;
+- `evidence` — the verdicts that support it, at least two at creation, from measured hypotheses
+  on different pages, none unreliable. Each has `hypothesis`, `page`, `label`, `effect`, `low`,
+  `high`, `sample` (the page's impressions over both windows) and `measured_on`. A hypothesis is
+  evidence of one lesson at most;
+- `tests` — ids of hypotheses linked to test the lesson while still `planned` or `live`; the
+  hypothesis itself does not know;
+- `not_confirmed` — tests that measured `no_signal`, `insufficient_history` or an unreliable
+  verdict, as entries like `evidence`;
+- `in_doubt` — `true` while `not_confirmed` has at least as many entries as `evidence`;
+- `retracted` and `retract_reason` — `null` while active. A test with the opposite significant
+  label retracts the lesson on its own, with the hypothesis and its numbers in the reason; the
+  person may retract it too.
+
+Below the header, the agent's and the person's prose: what was done, why it is thought general,
+where it ends.
 
 ## .lure/
 

@@ -33,6 +33,10 @@ without SEO or development experience; the author is the beta tester. Source: sp
   after-window. `measure.mts` does the arithmetic; `metrics.mts` still writes every header.
   `/lure:check` installs the job, takes live dates and explains verdicts. macOS only for now
   (adr-20261117-scheduled-check-is-code-without-a-model, adr-20261117-verdict-by-placebo-windows).
+- **Notifications** — after each scheduled run `plugins/lure/scripts/notify.mts` tells the
+  person through their own Telegram bot what changed and what needs them, and applies the live
+  dates they answer; macOS shows a notification without a bot. `/lure:notify` connects the bot
+  (adr-20261117-telegram-notices-by-the-owners-bot).
 - **Playbook** — `/lure:playbook` turns verdicts into lessons under the two-results rule and
   retracts them. `plugins/lure/scripts/playbook.mts` writes each lesson's header in
   `playbook/`, links hypotheses that test a lesson before their verdict, and syncs lessons when
@@ -41,7 +45,7 @@ without SEO or development experience; the author is the beta tester. Source: sp
 - Lure itself is a Claude Code plugin in this repository's marketplace
   (adr-20261115-distributed-as-a-claude-code-plugin). It is skills and Markdown, plus
   dependency-free Node scripts where a skill could not do without code — `search-console`,
-  `metrics`, `check`, `measure`, `schedule`, `playbook`
+  `metrics`, `check`, `measure`, `schedule`, `playbook`, `notify`
   (adr-20261116-code-enters-before-the-cli).
 
 ## Intended — not built yet
@@ -73,8 +77,10 @@ The first phase builds these as skills over Markdown files, with no CLI
   (adr-20261115-engine-apart-from-workspaces); its only writes outside are to `~/.lure/`: the
   registry of workspace names and paths (adr-20261115-workspace-format-and-registry),
   credentials (adr-20261116-search-console-oauth-and-local-secrets), and the engine copy with
-  its run logs (adr-20261117-scheduled-check-is-code-without-a-model) — plus, on macOS, the one
-  LaunchAgent plist of the schedule. It never calls a model
+  its run logs (adr-20261117-scheduled-check-is-code-without-a-model), and the Telegram bot's
+  token, pairing and poll state in `~/.lure/telegram/`
+  (adr-20261117-telegram-notices-by-the-owners-bot) — plus, on macOS, the one LaunchAgent plist
+  of the schedule. It never calls a model
   (adr-20261115-agent-runtime-calls-the-model).
 
 ### Runtime flows

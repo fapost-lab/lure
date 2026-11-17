@@ -129,6 +129,9 @@ function deps(over: Partial<Deps> & { world?: World; calls?: Call[] } = {}): Dep
     token: async () => "tok-123",
     pull: async () => ({}),
     inspect: async () => ({ lastCrawlTime: null, pageFetchState: null, googleCanonical: null, coverageState: null }),
+    // main() merges the real deps under these: without a stub, `run --all` would reach the real
+    // notify (and, on macOS, a desktop notification).
+    notify: async () => ({ errors: 0 }),
     ...rest,
   };
 }

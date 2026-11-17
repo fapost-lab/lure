@@ -8,7 +8,9 @@
 //   node check.mts measure --workspace <dir> --id <id>      (prints the verdict, writes nothing)
 //
 // It writes only inside a workspace (its hypotheses through metrics.mts, events.md,
-// journal.md, .lure/) and under ~/.lure/logs/. Read-only towards Google and the site.
+// journal.md, .lure/) and under ~/.lure/logs/. Read-only towards Google and the site. After
+// `run --all` it hands the results to notify.mts, which tells the person (Telegram, or a
+// macOS notification); a failure there never fails the run.
 
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -45,6 +47,8 @@ export type Deps = {
   token: (account: string) => Promise<string>;
   pull: (token: string, property: string, ws: string, today: string) => Promise<unknown>;
   inspect: (token: string, property: string, url: string) => Promise<Inspection>;
+  // Tells the person what the run found. Optional: without it, runAll only writes its logs.
+  notify?: (run: RunResult, d: Deps) => Promise<{ errors: number }>;
 };
 
 export function defaultDeps(): Deps {
@@ -56,6 +60,12 @@ export function defaultDeps(): Deps {
     token: (a) => accessToken(a),
     pull: (t, p, w, d) => pull(t, p, w, d),
     inspect: (t, p, u) => inspect(t, p, u),
+    // Loaded on demand: notify.mts imports this module, and a static import back would be a
+    // cycle. Both files are in the engine copy (schedule.mts ENGINE_FILES).
+    notify: async (run, d) => {
+      const n = await import("./notify.mts");
+      return n.notify(run, { ...n.defaultNotifyDeps(), fetch: d.fetch, today: d.today, now: d.now, lureHome: d.lureHome });
+    },
   };
 }
 
@@ -81,10 +91,28 @@ export function account(ws: string): string | null {
   return m ? m[1].replace(/^["']|["']$/g, "") : null;
 }
 
-export function registry(home: string): string[] {
+export type RegistryEntry = { product: string | null; path: string };
+
+// The one reader of ~/.lure/workspaces.yaml: each entry's path, with the product named in the
+// same list item (null when it has none).
+export function registryEntries(home: string): RegistryEntry[] {
   const p = join(home, "workspaces.yaml");
   if (!existsSync(p)) return [];
-  return [...readFileSync(p, "utf8").matchAll(/^\s+(?:-\s+)?path:\s*(.+?)\s*$/gm)].map((m) => m[1].replace(/^["']|["']$/g, ""));
+  const unquote = (s: string) => s.replace(/^["']|["']$/g, "");
+  const out: RegistryEntry[] = [];
+  let product: string | null = null;
+  for (const line of readFileSync(p, "utf8").split(/\r?\n/)) {
+    if (/^\s*-\s/.test(line)) product = null;   // a new list item
+    const named = line.match(/^\s+(?:-\s+)?product:\s*(.+?)\s*$/);
+    if (named) product = unquote(named[1]);
+    const path = line.match(/^\s+(?:-\s+)?path:\s*(.+?)\s*$/);
+    if (path) out.push({ product, path: unquote(path[1]) });
+  }
+  return out;
+}
+
+export function registry(home: string): string[] {
+  return registryEntries(home).map((e) => e.path);
 }
 
 // ---- events.md: Google's ranking updates and outages --------------------------------------
@@ -188,7 +216,14 @@ export async function probe(url: string, marker: string, f: Fetch): Promise<Prob
 
 // ---- One workspace ------------------------------------------------------------------------
 
-export type HypReport = { id: string; status: string; waiting?: string; changes: string[]; verdict?: unknown };
+// What a notification reads (notify.mts): the structured fields, never the English prose of
+// `waiting`. `needs_date`: the page does not open for Lure, so only the person can tell the
+// live date; `overdue`: the change was planned long ago and is still not live.
+export type HypReport = {
+  id: string; status: string; waiting?: string; changes: string[]; verdict?: unknown;
+  page?: string; planned_live?: string; live_on?: string; crawled_on?: string;
+  after_window?: Span; check_on?: string; needs_date?: boolean; overdue?: boolean;
+};
 export type Report = {
   at: string; workspace: string; today: string;
   errors: string[]; events: string[]; hypotheses: HypReport[]; skipped?: string;
@@ -213,6 +248,14 @@ function lock(ws: string, now: Date): () => void {
 
 function journal(ws: string, today: string, what: string, file: string, undo: string): void {
   appendFileSync(join(ws, "journal.md"), `- ${today} — check: ${what} — ${file} — ${undo}\n`);
+}
+
+// The person's live date, from `check live` or an answer in Telegram: the same refusals
+// (markLive: not a date, in the future, before recorded, after the re-crawl) and the same
+// journal line, which names where the date came from.
+export function applyLive(ws: string, id: string, date: string, today: string, via = "said by the person"): void {
+  markLive(ws, id, date, "person", today);
+  journal(ws, today, `${id} live since ${date} (${via})`, `hypotheses/${id}.md`, "/lure:check live with the right date");
 }
 
 function lastFinalDate(rows: { date: string }[]): string | null {
@@ -283,7 +326,7 @@ async function run(ws: string, prop: string, d: Deps, report: Report): Promise<v
   const events = readEvents(ws, d.today);
   for (const h of readHypotheses(ws)) {
     if (!ACTIVE.includes(h.header.status)) continue;
-    const r: HypReport = { id: h.header.id, status: h.header.status, changes: [] };
+    const r: HypReport = { id: h.header.id, status: h.header.status, changes: [], page: h.header.page };
     report.hypotheses.push(r);
     try {
       // A transition (live, re-crawled) is followed by the next step in the same run, so a
@@ -300,6 +343,13 @@ async function run(ws: string, prop: string, d: Deps, report: Report): Promise<v
     r.status = now.status;
     if (now.waiting) r.waiting = now.waiting;
     if (now.verdict) r.verdict = now.verdict;
+    for (const k of ["planned_live", "live_on", "crawled_on", "after_window", "check_on"] as const) {
+      if (now[k] !== undefined) (r as any)[k] = now[k];
+    }
+    if (now.status === "planned") {
+      r.needs_date = typeof now.waiting === "string" && now.waiting.startsWith("the page does not open for Lure");
+      r.overdue = d.today > addDays(now.planned_live, OVERDUE_DAYS);
+    }
   }
 }
 
@@ -433,9 +483,10 @@ export function verdictFor(hdr: any, rows: (DayRow & { page: string })[], events
 // path, whether it went well and how many errors. The errors themselves name pages and stay in
 // the workspace's own .lure/check-last.json.
 export type RunSummary = { path: string; ok: boolean; errors: number; reason?: string };
+export type RunResult = { at: string; workspaces: RunSummary[]; errors: string[]; notify?: { errors: number } };
 
-export async function runAll(d: Deps): Promise<{ at: string; workspaces: RunSummary[]; errors: string[] }> {
-  const out = { at: d.now().toISOString(), workspaces: [] as RunSummary[], errors: [] as string[] };
+export async function runAll(d: Deps): Promise<RunResult> {
+  const out: RunResult = { at: d.now().toISOString(), workspaces: [], errors: [] };
   const list = registry(d.lureHome);
   if (list.length === 0) out.errors.push(`no workspaces in ${join(d.lureHome, "workspaces.yaml")}`);
   for (const ws of list) {
@@ -451,6 +502,17 @@ export async function runAll(d: Deps): Promise<{ at: string; workspaces: RunSumm
         reason: denied ? "no access (on macOS, background jobs cannot read Documents, Desktop or Downloads)" : message(e),
       });
     }
+  }
+  // Telling the person never fails the check: only the number of errors is kept here, since
+  // their text could name a page.
+  if (d.notify) {
+    let errors = 0;
+    try {
+      errors = (await d.notify(out, d)).errors;
+    } catch {
+      errors = 1;
+    }
+    if (errors > 0) out.notify = { errors };
   }
   const logs = join(d.lureHome, "logs");
   mkdirSync(logs, { recursive: true });
@@ -512,6 +574,7 @@ export async function main(argv: string[], deps: Partial<Deps> = {}): Promise<nu
             console.log(`${w.ok ? "ok" : "errors"}\t${w.path}${w.ok ? "" : `\t${w.reason ?? `${w.errors} error(s), see .lure/check-last.json`}`}`);
           }
           for (const e of out.errors) console.error(`lure: ${e}`);
+          if (out.notify) console.error(`lure: notify: ${out.notify.errors} error(s); run notify.mts status`);
           return out.errors.length || out.workspaces.some((w) => !w.ok) ? 1 : 0;
         }
         if (!values.workspace) throw new LureError("--all or --workspace is required");
@@ -529,9 +592,7 @@ export async function main(argv: string[], deps: Partial<Deps> = {}): Promise<nu
       }
       case "live": {
         if (!values.workspace || !values.id || !values.date) throw new LureError("--workspace, --id and --date are required");
-        markLive(values.workspace, values.id, values.date, "person", d.today);
-        journal(values.workspace, d.today, `${values.id} live since ${values.date} (said by the person)`,
-          `hypotheses/${values.id}.md`, "/lure:check live with the right date");
+        applyLive(values.workspace, values.id, values.date, d.today);
         console.log(`${values.id}: live since ${values.date}`);
         return 0;
       }

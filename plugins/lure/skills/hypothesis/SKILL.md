@@ -39,6 +39,13 @@ A change to the whole site — speed work, a CDN or firewall setting, a theme, a
 a hypothesis: no control page escapes it. Offer to write it to `events.md` instead, so every
 check sees it (format in [workspace format](../init/references/workspace-format.md#eventsmd)).
 
+If the workspace has a `playbook/` folder, run
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/playbook.mts" list --workspace <dir>`. When it shows an
+active lesson, ask whether this hypothesis tests a playbook lesson, naming each by its statement.
+Keep the answer for §10. A hypothesis that tests a lesson takes the lesson's metric as its
+primary metric (§4) and a page that is not already in the lesson's evidence (§3); otherwise the
+link will be refused.
+
 ## 3. Is the page free
 
 Run `busy`. If the page is the page of an active hypothesis, stop: name it, and offer to wait for
@@ -115,10 +122,15 @@ page is free again.
 
 ## 10. Journal and git
 
+If the hypothesis tests a lesson (§2), link it right after it is recorded:
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/playbook.mts" link --workspace <dir> --lesson <lesson id> --hypothesis <id>`.
+The link lives in the lesson, not in the hypothesis. The script refuses a lesson on another
+metric or a page the lesson already stands on; say why and leave the hypothesis as it is.
+
 Append to `journal.md` one line for what was done, with its undo (delete the file, or set the
 status back). Then git, by [the rule](../init/references/workspace-format.md#git): the files are
-`hypotheses/<id>.md`, any hypothesis whose control was released, `events.md` if it changed, and
-`journal.md`.
+`hypotheses/<id>.md`, any hypothesis whose control was released, `events.md` if it changed,
+`playbook/<lesson id>.md` if a lesson was linked, and `journal.md`.
 
 ## 11. Report
 

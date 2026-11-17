@@ -32,7 +32,8 @@ Most checks below are review. Where code carries a rule, its tests do too (`npm 
 - Numbers in a hypothesis file come from the script, never typed by an agent.
   (adr-20261116-hypothesis-log-format) Checked: review of the hypothesis skill.
 - A lesson enters the playbook only after two consistent verdicts, with sample size, date and
-  site; lessons never transfer between products on their own. (spec `lure`) Checked: review.
+  site; lessons never transfer between products on their own. (spec `lure`,
+  adr-20261117-playbook-lessons-checked-by-script) Checked: `tests/playbook.test.mts`.
 - Lure commits only in a workspace that already is a git repository, and never runs `git init`.
   (adr-20261115-engine-apart-from-workspaces) Checked: review.
 - A tool is installed only after the person's yes, at a pinned version, and Lure never updates

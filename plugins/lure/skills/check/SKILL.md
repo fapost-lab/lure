@@ -96,6 +96,14 @@ from it belongs to the playbook, which needs two consistent results.
 `check measure --workspace <dir> --id <id>` recomputes a verdict from the data and writes
 nothing. Use it when the person doubts a verdict.
 
+For each `measured` hypothesis that `check status` lists, run
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/playbook.mts" list --workspace <dir> --tests <id>`. It prints
+the id of each lesson the hypothesis was linked to test, and nothing otherwise. If it prints one,
+say: "there is a new verdict for lesson <statement> — open /lure:playbook". Then run
+`playbook.mts sync --workspace <dir>` and tell what it changed, a retraction above all. Sync after
+the `list --tests` call, not before: sync moves the hypothesis out of the lesson's tests. The
+check itself never touches the playbook.
+
 ## 6. Outages
 
 A line in `events.md` that ends with `(outage)` is left out of the noise estimate: the
@@ -109,7 +117,7 @@ line. Mark it only after a yes.
 Neither the scheduled run nor `check run` ever commits. In a workspace that is a git
 repository, whenever you open this skill — for status too — find the files the check changed
 and have not been committed yet. These are the hypothesis files named in the journal's `check:`
-lines, plus `events.md` and `journal.md`, and only the ones `git status --porcelain` shows as
+lines, the lesson files named in its `playbook:` lines, plus `events.md` and `journal.md`, and only the ones `git status --porcelain` shows as
 changed.
 
 Show the person the diff. After their yes, commit exactly those files by

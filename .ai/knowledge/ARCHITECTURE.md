@@ -33,10 +33,15 @@ without SEO or development experience; the author is the beta tester. Source: sp
   after-window. `measure.mts` does the arithmetic; `metrics.mts` still writes every header.
   `/lure:check` installs the job, takes live dates and explains verdicts. macOS only for now
   (adr-20261117-scheduled-check-is-code-without-a-model, adr-20261117-verdict-by-placebo-windows).
+- **Playbook** — `/lure:playbook` turns verdicts into lessons under the two-results rule and
+  retracts them. `plugins/lure/scripts/playbook.mts` writes each lesson's header in
+  `playbook/`, links hypotheses that test a lesson before their verdict, and syncs lessons when
+  the person opens `/lure:playbook` or `/lure:check`, never in the scheduled job
+  (adr-20261117-playbook-lessons-checked-by-script).
 - Lure itself is a Claude Code plugin in this repository's marketplace
   (adr-20261115-distributed-as-a-claude-code-plugin). It is skills and Markdown, plus
   dependency-free Node scripts where a skill could not do without code — `search-console`,
-  `metrics`, `check`, `measure`, `schedule`
+  `metrics`, `check`, `measure`, `schedule`, `playbook`
   (adr-20261116-code-enters-before-the-cli).
 
 ## Intended — not built yet
@@ -47,7 +52,6 @@ The task that builds a part moves it out of this heading.
 
 - **Hypotheses** — the log: candidates, hypotheses, their pages, baselines, control pages,
   traffic floors and check dates. Knows nothing of where metrics come from.
-- **Playbook** — turns verdicts into lessons under the two-results rule, and retracts them.
 - **Content** — interview, draft in the person's voice, fact check, approval.
 - **Channels** — one adapter per platform, each with its publishing modes and platform cap.
 - **Tools** — running third-party audit and drafting tools and turning their findings into
@@ -63,7 +67,8 @@ The first phase builds these as skills over Markdown files, with no CLI
   the scheduler, channel platforms.
 - Measurement reads Hypotheses; Playbook reads Measurement's verdicts; Content reads Hypotheses
   and Playbook as material; Channels publish what Content produced. Nothing points back up the
-  chain.
+  chain. The direction binds code and formats; a skill may lead the person through a downstream
+  step (`/lure:check` syncs the playbook) without the code below it knowing.
 - The engine never reads or writes product data outside a workspace
   (adr-20261115-engine-apart-from-workspaces); its only writes outside are to `~/.lure/`: the
   registry of workspace names and paths (adr-20261115-workspace-format-and-registry),

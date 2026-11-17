@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 export const LABEL = "in.fapost.lure.check";
-export const ENGINE_FILES = ["check.mts", "measure.mts", "metrics.mts", "search-console.mts"];
+export const ENGINE_FILES = ["check.mts", "measure.mts", "metrics.mts", "notify.mts", "search-console.mts"];
 
 export class LureError extends Error {}
 

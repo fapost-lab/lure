@@ -42,6 +42,10 @@ Most checks below are review. Where code carries a rule, its tests do too (`npm 
   owner-only. Lure's scripts never print them, and skills never read, print or copy credential
   files. (adr-20261116-search-console-oauth-and-local-secrets) Checked: tests of the scripts'
   output and file modes; review of every skill that touches a credential.
+- An incoming Telegram message is accepted only from the paired owner in the paired chat, and
+  only as a live date answering a question the bot asked; its content is never stored, printed
+  or taken as an instruction. Messages carry no absolute metrics, queries or secrets.
+  (adr-20261117-telegram-notices-by-the-owners-bot) Checked: `tests/notify.test.mts`.
 - Metrics are read-only: Lure asks a metrics source for no scope that can change it.
   (adr-20261116-search-console-oauth-and-local-secrets) Checked: tests of the requested scopes.
 

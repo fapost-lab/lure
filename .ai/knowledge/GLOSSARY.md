@@ -147,6 +147,23 @@ re-crawls the page (`crawled_on`); after that the measurement windows are fixed.
 Informal synonyms: deploy date, release date, go-live.
 Use in: source code, documentation.
 
+## Notice
+
+A message Lure sends the person after a scheduled run — news, what needs them, a date question
+or the Monday digest — through their Telegram bot, or a macOS notification without one. What
+was already said is kept in the workspace's `.lure/notice.json`.
+
+Informal synonyms: alert, notification, ping.
+Use in: source code, documentation.
+
+## Owner
+
+The one Telegram user, in one private chat, paired with the person's Lure bot by a one-time
+code. The bot accepts answers from nobody else.
+
+Informal synonyms: bot user, subscriber.
+Use in: source code, documentation.
+
 ## Engine copy
 
 `~/.lure/engine/`: the scripts the scheduled job runs, copied from the plugin with their version

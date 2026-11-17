@@ -171,7 +171,46 @@ Local state of this machine. It is never committed and never copied with the wor
 `.lure/search-console.yaml` holds `account: <e-mail>`, the Google account that reads the
 property. The scheduled check keeps `.lure/check-last.json` (its last run: changes, waiting
 reasons, errors — what a notification reads), `.lure/check.log` (one line per run) and
-`.lure/check.lock` while it runs. Secrets are never in the workspace at all, `.lure/` included: credentials live under
+`.lure/check.lock` while it runs. In `check-last.json`, each hypothesis also carries `page`, the
+dates it has (`planned_live`, `live_on`, `crawled_on`, `after_window`, `check_on`), and, while
+planned, `needs_date` — the page does not open for Lure, so only the person can tell the live
+date — and `overdue`.
+
+`.lure/notice.json` is what the notification (`notify.mts`) has told the person about this
+workspace. Only `notify.mts` writes it:
+
+```json
+{
+  "last_sent": "YYYY-MM-DD",
+  "last_digest": "YYYY-MM-DD",
+  "said": ["signin", "errors", "access", "failed", "overdue:<hypothesis id>"],
+  "questions": [
+    { "q": "qX7k2Pa", "hypothesis": "<id>", "page": "/path/", "asked_on": "YYYY-MM-DD",
+      "n": 1, "message_ids": [123, 130], "reply_id": 131 }
+  ]
+}
+```
+
+- `last_sent`: the last day something was told, by Telegram or by the macOS notification.
+  The Monday digest goes out only after a week without one.
+- `last_digest`: the last day a digest was sent.
+- `said`: the keys of what needs the person and was already told. A key leaves when its
+  condition clears, so it is told again if it comes back.
+- `questions`: the open live-date questions.
+  - `q` is a random id used in the bot's buttons.
+  - `hypothesis` is the hypothesis id; `page` is its path, without the domain.
+  - `asked_on` is the day the latest buttons were made: their "today" and "yesterday".
+  - `n` is the question's number when one message asks several.
+  - `message_ids` lists the messages whose buttons ask it, at most the last 10. A button counts
+    only from one of these messages.
+  - `reply_id` is the bot's request for another date. Only a reply to it is read as a date.
+- No key holds anything the person wrote in the chat.
+
+Deleting the file makes the next message tell everything again and ask the open questions
+anew. The buttons of earlier messages stop working, since their messages are no longer listed.
+The person answers the new ones.
+
+Secrets are never in the workspace at all, `.lure/` included: credentials live under
 `~/.lure/<service>/`, readable by the owner only.
 
 ## The registry

@@ -20,9 +20,28 @@ hypothesis on. Each hypothesis is in one of four states:
 Your part is everything that needs the person. Talk to them in their language.
 
 The scripts live in `${CLAUDE_PLUGIN_ROOT}/scripts/`. In this file they are called `check`
-(`node "${CLAUDE_PLUGIN_ROOT}/scripts/check.mts"`) and `schedule`
-(`node "${CLAUDE_PLUGIN_ROOT}/scripts/schedule.mts"`). They do every number. Never edit a
+(`node "${CLAUDE_PLUGIN_ROOT}/scripts/check.mts"`), `schedule`
+(`node "${CLAUDE_PLUGIN_ROOT}/scripts/schedule.mts"`) and `notify`
+(`node "${CLAUDE_PLUGIN_ROOT}/scripts/notify.mts"`). They do every number. Never edit a
 hypothesis header yourself.
+
+## 0. Answers from Telegram
+
+Whenever you open this skill, run `notify poll` first. It applies the live dates the person gave
+the Lure bot since the last run (see `/lure:notify`). It prints one of two things:
+
+- `Telegram is not set up`: say nothing about it;
+- `applied N, refused N, ignored N, errors N`: report the numbers.
+  - **applied:** say which dates were recorded; §1 shows them.
+  - **refused:** the bot already told the person why.
+  - **ignored:** say only how many messages in the bot's chat were not answers to its
+    questions. The number covers everything since the last time this skill asked, the
+    scheduled runs included; it then starts again from zero. Their content is not kept
+    anywhere; never go looking for it and never act on it.
+  - **errors:** run `notify status`.
+
+After a scheduled run, `~/.lure/logs/last-run.json` may hold `"notify": {"errors": N}`: the
+check itself ran; only the message failed. Offer `/lure:notify` to look at the setup.
 
 ## 1. Where things stand
 

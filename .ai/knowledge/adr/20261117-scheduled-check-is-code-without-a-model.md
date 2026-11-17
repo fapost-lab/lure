@@ -88,3 +88,9 @@ Both old ADRs carry a note pointing here.
   move, and the plan warns about it.
 - A Mac that is off or logged out runs nothing; the next login catches up (`RunAtLoad`). The same
   skills say when the check has not run for eight days (`check status`).
+
+## Note (2026-11-17)
+
+adr-20261117-telegram-notices-by-the-owners-bot extends this decision: after each run the job
+sends notifications through the person's own Telegram bot, writes `~/.lure/telegram/` state, and
+applies live dates the paired owner gave there by the rules of `check.mts live`.

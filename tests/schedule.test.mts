@@ -2,7 +2,8 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 
 import {
@@ -280,4 +281,15 @@ test("versionedNode: version-bound node paths are recognised", async () => {
   assert.equal(versionedNode("/opt/homebrew/Cellar/node/26.1.0/bin/node"), true);
   assert.equal(versionedNode("/opt/homebrew/bin/node"), false);
   assert.equal(versionedNode("/usr/local/bin/node"), false);
+});
+
+test("the engine copy holds every script the check imports, notify.mts included", () => {
+  const src = join(dirname(fileURLToPath(import.meta.url)), "..", "plugins", "lure", "scripts");
+  assert.ok(ENGINE_FILES.includes("notify.mts"));
+  for (const f of ENGINE_FILES) {
+    const text = readFileSync(join(src, f), "utf8");
+    for (const m of text.matchAll(/(?:from\s+|import\()\s*["']\.\/([\w.-]+\.mts)["']/g)) {
+      assert.ok(ENGINE_FILES.includes(m[1]), `${f} imports ${m[1]}, which is not in ENGINE_FILES`);
+    }
+  }
 });

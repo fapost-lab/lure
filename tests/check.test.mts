@@ -1181,8 +1181,10 @@ test("F18: a workspace-level failure carries a reason: no lure.yaml, lock held, 
     const out = await runAll(deps({ now: () => new Date() }));
     assert.match(out.workspaces[0].reason!, /no lure.yaml/);
     assert.match(out.workspaces[1].reason!, /another check is running/);
-    if (process.getuid?.() !== 0) assert.match(out.workspaces[2].reason!, /no access/);
-    for (const w of out.workspaces) assert.deepEqual([w.ok, w.errors], [false, 1]);
+    // chmod cannot take read access away on Windows, nor from root: there the third case is moot.
+    const canDeny = process.platform !== "win32" && process.getuid?.() !== 0;
+    if (canDeny) assert.match(out.workspaces[2].reason!, /no access/);
+    for (const w of out.workspaces.slice(0, canDeny ? 3 : 2)) assert.deepEqual([w.ok, w.errors], [false, 1]);
   } finally {
     chmodSync(join(denied, "lure.yaml"), 0o644);
   }

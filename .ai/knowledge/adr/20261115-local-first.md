@@ -17,7 +17,8 @@ runtime and should not need another account. Spec `lure`, Decisions.
 ## Decision
 
 Lure runs on the person's machine, scheduled runs included (the desktop app's scheduled tasks
-or cron with a headless agent run). Missed runs are caught up at the next start. Notifications
+or cron with a headless agent run — replaced by adr-20261117-scheduled-check-is-code-without-a-model:
+a launchd job runs Lure's own script, with no agent). Missed runs are caught up at the next start. Notifications
 reach the person through a Telegram bot, with a desktop notification as fallback. Lure has no
 server, no account and no telemetry.
 

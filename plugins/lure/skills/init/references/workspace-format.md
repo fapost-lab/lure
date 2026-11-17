@@ -79,7 +79,11 @@ crawlers, migrations, sitemaps sent, removals, Google updates. One line each, ol
 - YYYY-MM-DD … YYYY-MM-DD — <what happened over a span> — <source>
 ```
 
-Measurement reads it to mark what else happened in a hypothesis's window.
+Measurement reads it to mark what else happened in a hypothesis's window. The scheduled check
+adds Google's ranking updates itself, from the Search Status Dashboard, ending in
+`status.search.google.com, incident <id>`; a rollout still under way reads `<date> … open` until
+it ends. A line that ends with `(outage)` — the site down, crawlers blocked — is left out of the
+check's noise estimate.
 
 ## search-console/
 
@@ -112,6 +116,19 @@ version, `lure_hypothesis: 1`:
 - `events` — lines of `events.md` inside the baseline window;
 - when abandoned: `abandoned` and `abandon_reason`.
 
+Written later by the scheduled check (`check.mts`, through `metrics.mts`), all optional:
+
+- `live_on` and `live_source` (`marker` — the check saw `live_marker` on the page — or
+  `person`); `live_absent_on`, the last day the check saw the page without the marker;
+- `crawled_on` — the day Google re-crawled the page after `live_on` (URL Inspection);
+- `before_window` and `after_window` (`from`, `to`), fixed at `crawled_on`; `check_on` is then
+  replaced by the after-window's end plus 3 days;
+- `waiting` — why the check cannot go on yet; `warnings` — a list that stays until the verdict;
+- `verdict` — `label` (`noticeable_gain`, `no_signal`, `worse`, `insufficient_history`),
+  `metric`, `expected`, `effect`, `low`, `high`, `p`, `past`, `placebos`, `effective_windows`,
+  `mde`, `unreliable`, the windows, sums for `page` and `controls`, `per_control`, `position`,
+  `clicks`, `updates`, `events`, `measured_on`. How to read it: the check skill's `verdict.md`.
+
 Below the header, the person's prose: why it should help, what exactly changes, how to undo it,
 what is at risk.
 
@@ -122,7 +139,9 @@ active hypothesis is never a control; a page may be a control of several hypothe
 
 Local state of this machine. It is never committed and never copied with the workspace.
 `.lure/search-console.yaml` holds `account: <e-mail>`, the Google account that reads the
-property. Secrets are never in the workspace at all, `.lure/` included: credentials live under
+property. The scheduled check keeps `.lure/check-last.json` (its last run: changes, waiting
+reasons, errors — what a notification reads), `.lure/check.log` (one line per run) and
+`.lure/check.lock` while it runs. Secrets are never in the workspace at all, `.lure/` included: credentials live under
 `~/.lure/<service>/`, readable by the owner only.
 
 ## The registry

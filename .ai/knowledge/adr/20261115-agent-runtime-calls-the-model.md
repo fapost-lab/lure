@@ -19,7 +19,9 @@ Spec `lure`, Decisions.
 
 Lure is skills plus, later, a CLI that an agent runtime runs. No code in this repository sends a
 request to a model API, holds a model key or depends on a model SDK. Scheduled runs start the
-runtime headless; the runtime calls the model.
+runtime headless; the runtime calls the model. *(Replaced for the scheduled check by
+adr-20261117-scheduled-check-is-code-without-a-model: the scheduled job is a Node script and
+calls no model at all.)*
 
 ## Alternatives
 

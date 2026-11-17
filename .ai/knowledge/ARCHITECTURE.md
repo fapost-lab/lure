@@ -25,11 +25,18 @@ without SEO or development experience; the author is the beta tester. Source: sp
   (adr-20261116-search-console-oauth-and-local-secrets).
 - **Hypotheses** (recording) — `/lure:hypothesis` writes one file per hypothesis with its
   baseline, controls, traffic floor and provisional check date; `plugins/lure/scripts/metrics.mts`
-  does the arithmetic and writes the header (adr-20261116-hypothesis-log-format). Marking a
-  change live and measuring it belong to the check, not built yet.
+  does the arithmetic and writes the header (adr-20261116-hypothesis-log-format).
+- **Measurement** (the check) — a daily launchd job runs `check.mts` from the engine copy in
+  `~/.lure/engine/`, with no model. For each registered workspace it pulls Search Console,
+  adds Google's ranking updates to `events.md`, marks a change live (marker on the page, or the
+  person's date) and re-crawled (URL Inspection), and measures it once final data covers the
+  after-window. `measure.mts` does the arithmetic; `metrics.mts` still writes every header.
+  `/lure:check` installs the job, takes live dates and explains verdicts. macOS only for now
+  (adr-20261117-scheduled-check-is-code-without-a-model, adr-20261117-verdict-by-placebo-windows).
 - Lure itself is a Claude Code plugin in this repository's marketplace
-  (adr-20261115-distributed-as-a-claude-code-plugin). It is skills and Markdown, plus one
-  dependency-free Node script where a skill could not do without code
+  (adr-20261115-distributed-as-a-claude-code-plugin). It is skills and Markdown, plus
+  dependency-free Node scripts where a skill could not do without code — `search-console`,
+  `metrics`, `check`, `measure`, `schedule`
   (adr-20261116-code-enters-before-the-cli).
 
 ## Intended — not built yet
@@ -40,9 +47,6 @@ The task that builds a part moves it out of this heading.
 
 - **Hypotheses** — the log: candidates, hypotheses, their pages, baselines, control pages,
   traffic floors and check dates. Knows nothing of where metrics come from.
-- **Measurement** — the check: confirms a change is live and re-crawled, reads metrics through
-  a port, compares with baseline and controls, marks outside events such as Google updates,
-  gives a verdict.
 - **Playbook** — turns verdicts into lessons under the two-results rule, and retracts them.
 - **Content** — interview, draft in the person's voice, fact check, approval.
 - **Channels** — one adapter per platform, each with its publishing modes and platform cap.
@@ -62,8 +66,10 @@ The first phase builds these as skills over Markdown files, with no CLI
   chain.
 - The engine never reads or writes product data outside a workspace
   (adr-20261115-engine-apart-from-workspaces); its only writes outside are to `~/.lure/`: the
-  registry of workspace names and paths (adr-20261115-workspace-format-and-registry) and
-  credentials (adr-20261116-search-console-oauth-and-local-secrets). It never calls a model
+  registry of workspace names and paths (adr-20261115-workspace-format-and-registry),
+  credentials (adr-20261116-search-console-oauth-and-local-secrets), and the engine copy with
+  its run logs (adr-20261117-scheduled-check-is-code-without-a-model) — plus, on macOS, the one
+  LaunchAgent plist of the schedule. It never calls a model
   (adr-20261115-agent-runtime-calls-the-model).
 
 ### Runtime flows

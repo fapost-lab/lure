@@ -12,16 +12,21 @@ Most checks below are review. Where code carries a rule, its tests do too (`npm 
 - The engine repository holds no product data: no workspace files, metrics or credentials.
   (adr-20261115-engine-apart-from-workspaces) Checked: review of every diff.
 - No code in the engine calls a model API, holds a model key or depends on a model SDK.
-  (adr-20261115-agent-runtime-calls-the-model) Checked: review; dependency manifests once they
+  (adr-20261115-agent-runtime-calls-the-model; for scheduled runs,
+  adr-20261117-scheduled-check-is-code-without-a-model) Checked: review; dependency manifests once they
   exist.
 - Nothing is published beyond the channel's publishing mode, and no mode exceeds its platform
   cap. (adr-20261115-person-approves-what-goes-public) Checked: review of every channel adapter.
 - Lure never automates engagement on another account's content or messages other people.
   (adr-20261115-person-approves-what-goes-public) Checked: review.
 - A verdict always carries a confidence level, sample size and effect; "worked" alone is never
-  a verdict. (spec `lure`) Checked: review of the check's output format.
+  a verdict. (spec `lure`, adr-20261117-verdict-by-placebo-windows) Checked: tests of
+  `metrics.mts writeVerdict` and `measure.mts`.
 - A check measures only after confirming the change is live and the page was re-crawled after
-  it; otherwise it waits. (spec `lure`) Checked: review.
+  it; otherwise it waits with the reason written. (spec `lure`) Checked: tests of `check.mts`.
+- The scheduled job never calls a model, never commits, and is installed or removed only after
+  the person's yes to the plan shown. (adr-20261117-scheduled-check-is-code-without-a-model)
+  Checked: review of the check skill; tests of `schedule.mts` (no real `launchctl` in tests).
 - One active hypothesis per page at a time; the page of an active hypothesis is never a control.
   (spec `lure`, adr-20261116-hypothesis-log-format) Checked: tests of `metrics.mts record`.
 - Numbers in a hypothesis file come from the script, never typed by an agent.

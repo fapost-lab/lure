@@ -252,6 +252,7 @@ const T = {
     refused: (pg: string, why: string) => `Не записал дату для ${pg}: ${why}`,
     future: "дата в будущем",
     beforeRecorded: "она раньше записи гипотезы",
+    beforeAbsent: "в этот день проверка ещё не видела изменения на странице",
     closed: "дату уже нельзя изменить",
     fallback: (p: string) => `есть новости по ${p} — откройте /lure:check`,
     connected: (ps: string) => `Lure подключён к: ${ps}`,
@@ -288,6 +289,7 @@ const T = {
     refused: (pg: string, why: string) => `Did not record the date for ${pg}: ${why}`,
     future: "the date is in the future",
     beforeRecorded: "it is before the hypothesis was recorded",
+    beforeAbsent: "on that day the check still saw the page without the change",
     closed: "the date can no longer change",
     fallback: (p: string) => `news for ${p} — open /lure:check`,
     connected: (ps: string) => `Lure is connected to: ${ps}`,
@@ -516,7 +518,7 @@ async function apply(ctx: PollContext, ws: number, question: Question, date: str
   } catch (e) {
     if (!(e instanceof MetricsError)) throw e;
     const m = e.message;
-    const why = /in the future/.test(m) ? t.future : /before the hypothesis was recorded/.test(m) ? t.beforeRecorded : t.closed;
+    const why = /in the future/.test(m) ? t.future : /before the hypothesis was recorded/.test(m) ? t.beforeRecorded : /without the marker/.test(m) ? t.beforeAbsent : t.closed;
     if (why === t.closed) {
       notice.questions = notice.questions.filter((q) => q.q !== question.q);
       writeNotice(dir, notice);

@@ -138,14 +138,29 @@ export function incidentLine(i: Incident): string {
 
 // Adds new incidents in date order and rewrites the line of one whose dates changed (a
 // rollout that has ended). Returns the new text and what changed.
-export function mergeIncidents(text: string, incidents: Incident[]): { text: string; changes: string[] } {
+// `undo` runs parallel to `changes`: how the journal takes each one back.
+export function mergeIncidents(text: string, incidents: Incident[]): { text: string; changes: string[]; undo: string[] } {
   const lines = text.split("\n");
   const changes: string[] = [];
+  const undo: string[] = [];
   for (const inc of incidents) {
     const line = incidentLine(inc);
-    const at = lines.findIndex((l) => l.endsWith(`incident ${inc.id}`));
+    // The incident id as a word anywhere in the line: the person may have annotated it, and
+    // a CRLF file leaves a "\r" at the end.
+    const id = inc.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const known = new RegExp(`(?<![\\w-])incident ${id}(?![\\w-])`);
+    const at = lines.findIndex((l) => known.test(l));
     if (at >= 0) {
-      if (lines[at] !== line) { lines[at] = line; changes.push(`updated: ${inc.name}`); }
+      // Only the dates are refreshed; the rest of the line, annotations included, stays.
+      const cr = lines[at].endsWith("\r") ? "\r" : "";
+      const old = lines[at].slice(0, lines[at].length - cr.length);
+      const head = line.slice(0, line.indexOf(" — "));
+      const m = old.match(/^- \d{4}-\d{2}-\d{2}(?: … (?:\d{4}-\d{2}-\d{2}|open))?(?= — )/);
+      if (m && m[0] !== head) {
+        lines[at] = head + old.slice(m[0].length) + cr;
+        changes.push(`updated: ${inc.name}`);
+        undo.push(`restore the line "${old}"`);
+      }
       continue;
     }
     // Before the first dated line that starts later; otherwise after the last dated line.
@@ -159,10 +174,11 @@ export function mergeIncidents(text: string, incidents: Incident[]): { text: str
     if (pos < 0) pos = lastDated >= 0 ? lastDated + 1 : lines.length;
     lines.splice(pos, 0, line);
     changes.push(`added: ${inc.name}`);
+    undo.push("delete the line");
   }
   let out = lines.join("\n");
   if (!out.endsWith("\n")) out += "\n";
-  return { text: out, changes };
+  return { text: out, changes, undo };
 }
 
 const EVENTS_HEAD = "# Events\n\nOutside events that move search traffic and are not Lure's own changes, oldest first.\n\n";
@@ -308,7 +324,7 @@ async function run(ws: string, prop: string, d: Deps, report: Report): Promise<v
     if (merged.text !== before) {
       writeFileSync(`${p}.part`, merged.text);
       renameSync(`${p}.part`, p);
-      for (const c of merged.changes) journal(ws, d.today, `Google update ${c}`, "events.md", "delete the line");
+      merged.changes.forEach((c, i) => journal(ws, d.today, `Google update ${c}`, "events.md", merged.undo[i]));
       report.events.push(...merged.changes);
     }
   } catch (e) {
@@ -464,7 +480,11 @@ export function verdictFor(hdr: any, rows: (DayRow & { page: string })[], events
   const warnings: string[] = [];
   const recorded = Number(hdr.baseline?.page?.[hdr.metric]);
   if (Number.isFinite(recorded) && recorded > 0) {
-    const ratio = v.page.before / recorded;
+    // Per-day means: the before-window and the recorded baseline need not be the same length.
+    const span = (a: Span) => Math.round((Date.parse(`${a.to}T00:00:00Z`) - Date.parse(`${a.from}T00:00:00Z`)) / 86_400_000) + 1;
+    const bl = hdr.baseline ?? {};
+    const baseDays = isDate(bl.from) && isDate(bl.to) ? span({ from: bl.from, to: bl.to }) : span(before);
+    const ratio = (v.page.before / span(before)) / (recorded / baseDays);
     if (ratio > BASELINE_DRIFT || ratio < 1 / BASELINE_DRIFT) {
       warnings.push(`the before-window has ${v.page.before} ${hdr.metric}, the baseline recorded with the hypothesis ${recorded}: something else changed in between`);
     }

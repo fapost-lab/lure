@@ -20,6 +20,9 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { registryEntries } from "./check.mts";
+import { lureHome } from "./search-console.mts";
+
 export const LABEL = "in.fapost.lure.check";
 export const ENGINE_FILES = ["check.mts", "measure.mts", "metrics.mts", "notify.mts", "search-console.mts"];
 
@@ -46,10 +49,6 @@ export type Deps = InstallOptions;
 
 // ---- Defaults -----------------------------------------------------------------------------
 
-function defaultLureHome(): string {
-  return process.env.LURE_HOME || join(homedir(), ".lure");
-}
-
 const defaultExec: Exec = (cmd, args) => {
   const r = spawnSync(cmd, args, { encoding: "utf8" });
   return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? (r.error ? String(r.error.message) : "") };
@@ -68,7 +67,7 @@ function unsupported(platform: string): string {
 function resolved(o: CommonOptions) {
   return {
     platform: o.platform ?? process.platform,
-    lureHome: o.lureHome ?? defaultLureHome(),
+    lureHome: o.lureHome ?? lureHome(),
     agentsDir: o.agentsDir ?? join(homedir(), "Library", "LaunchAgents"),
     uid: o.uid ?? process.getuid?.() ?? 0,
     exec: o.exec ?? defaultExec,
@@ -165,25 +164,15 @@ export function copyEngine(srcDir: string, engineDir: string, version: string): 
   }
 }
 
-export function riskyWorkspaces(registryText: string, home: string): string[] {
+// Workspaces the registry lists inside the folders macOS guards from background jobs.
+export function riskyWorkspaces(lureHomeDir: string, home: string): string[] {
   const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
   const h = norm(home);
   const roots = ["Documents", "Desktop", "Downloads"].map((d) => `${h}/${d}`);
-  const out: string[] = [];
-  for (const m of registryText.matchAll(/^\s+(?:-\s+)?path:\s*(.+?)\s*$/gm)) {
-    const value = m[1].replace(/^(["'])(.*)\1$/, "$2");
+  return registryEntries(lureHomeDir).map((e) => e.path).filter((value) => {
     const p = norm(value);
-    if (roots.some((r) => p === r || p.startsWith(r + "/"))) out.push(value);
-  }
-  return out;
-}
-
-function readRegistry(lureHome: string): string {
-  try {
-    return readFileSync(join(lureHome, "workspaces.yaml"), "utf8");
-  } catch {
-    return "";
-  }
+    return roots.some((r) => p === r || p.startsWith(r + "/"));
+  });
 }
 
 function checkTime(hour: number, minute: number): void {
@@ -219,7 +208,7 @@ export function plan(o: PlanOptions): string {
     "plist:",
     plist({ node, script: p.script, hour, minute, log: p.log }),
   ];
-  const risky = riskyWorkspaces(readRegistry(r.lureHome), homedir());
+  const risky = riskyWorkspaces(r.lureHome, homedir());
   if (risky.length) {
     lines.push(
       "Warning: these workspaces are inside Documents, Desktop or Downloads. macOS privacy",

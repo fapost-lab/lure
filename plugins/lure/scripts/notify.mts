@@ -124,6 +124,10 @@ export type Question = {
   n?: number;              // its number in a message with several questions
   message_ids: number[];   // the messages whose buttons ask it, newest last
   reply_id?: number;       // the ForceReply message that asked for another date
+  // How each of those messages labelled its button (`n`, `asked_on`), by message id: a later
+  // message may number the question differently or carry other dates, and an older message's
+  // remaining buttons must stay as that message showed them.
+  shown?: { [messageId: string]: { n?: number; asked_on: string } };
 };
 export type Notice = { last_sent: string | null; last_digest: string | null; said: string[]; questions: Question[] };
 
@@ -427,6 +431,7 @@ export function compose(
     const q: Question = { q: id, hypothesis: h.id, page: pathOf(h.page), asked_on: today, message_ids: old?.message_ids ?? [] };
     if (asking.length > 1) q.n = i + 1;
     if (old?.reply_id !== undefined) q.reply_id = old.reply_id;
+    if (old?.shown) q.shown = old.shown;
     return q;
   });
 
@@ -535,7 +540,11 @@ async function apply(ctx: PollContext, ws: number, question: Question, date: str
   // Every message that asked this question loses its buttons; the other questions of such a
   // message keep theirs.
   for (const id of question.message_ids) {
-    const rest = notice.questions.filter((q) => q.message_ids.includes(id));
+    // Each remaining question is labelled as this message showed it, not as the latest did.
+    const rest = notice.questions.filter((q) => q.message_ids.includes(id)).map((q) => {
+      const was = q.shown?.[String(id)];
+      return was ? { ...q, n: was.n, asked_on: was.asked_on } : q;
+    });
     await quietly(call(d.fetch, bot.token, "editMessageReplyMarkup", {
       chat_id: owner.chat_id, message_id: id,
       reply_markup: { inline_keyboard: buttonsFor(ws, rest, language) },
@@ -713,10 +722,17 @@ async function notifyWorkspace(
     last_sent: d.today,
     last_digest: message.digest ? d.today : notice.last_digest,
     said: message.said,
-    questions: message.questions.map((q) => ({
-      ...q,
-      message_ids: messageId !== null && buttons.length ? [...q.message_ids, messageId].slice(-MAX_MESSAGE_IDS) : q.message_ids,
-    })),
+    questions: message.questions.map((q) => {
+      if (messageId === null || !buttons.length) return q;
+      const ids = [...q.message_ids, messageId].slice(-MAX_MESSAGE_IDS);
+      const shown: NonNullable<Question["shown"]> = {};
+      for (const id of ids) {
+        const was = id === messageId ? undefined : q.shown?.[String(id)];
+        if (was) shown[String(id)] = was;
+      }
+      shown[String(messageId)] = q.n !== undefined ? { n: q.n, asked_on: q.asked_on } : { asked_on: q.asked_on };
+      return { ...q, message_ids: ids, shown };
+    }),
   });
   let failed = false;
   if (tg) {

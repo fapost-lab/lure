@@ -13,7 +13,7 @@
 // macOS notification); a failure there never fails the run.
 
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -22,7 +22,7 @@ import {
   readHypotheses, readPages, setWaiting, writeVerdict,
 } from "./metrics.mts";
 import { LureError as MeasureError, measure, windows } from "./measure.mts";
-import type { DayRow, Span } from "./measure.mts";
+import type { DayRow, MeasureInput, Span, Verdict } from "./measure.mts";
 import {
   LureError as GoogleError, MIN_NODE, accessToken, inspect, lureHome, nodeTooOld, pull,
 } from "./search-console.mts";
@@ -37,7 +37,18 @@ export const PROBE_FROM_DAYS = 3;   // start looking for the marker this many da
 export const OVERDUE_DAYS = 14;     // planned_live + this, and still not live: say so
 export const SILENT_DAYS = 8;       // no run for longer than this: the skills say so
 export const BASELINE_DRIFT = 2;    // before-window vs recorded baseline, either way: warn
-const VERSION = "0.1.0";
+
+// The version this code runs as: the engine copy's VERSION.json (written by schedule.mts) sits
+// next to it; run from the plugin, the manifest sits one level up. Never throws.
+export function engineVersion(dir: string = dirname(fileURLToPath(import.meta.url))): string {
+  for (const file of [join(dir, "VERSION.json"), join(dir, "..", ".claude-plugin", "plugin.json")]) {
+    try {
+      const v = JSON.parse(readFileSync(file, "utf8"))?.version;
+      if (typeof v === "string" && /^[\w.+-]+$/.test(v)) return v;
+    } catch { /* absent or unreadable: try the next source */ }
+  }
+  return "unknown";
+}
 
 export type Deps = {
   fetch: Fetch;
@@ -220,7 +231,7 @@ export function normalise(s: string): string {
 // the person tells the date instead.
 export async function probe(url: string, marker: string, f: Fetch): Promise<Probe> {
   const res = await f(url, {
-    headers: { "user-agent": `Lure-check/${VERSION} (+https://github.com/fapost-lab/lure)` },
+    headers: { "user-agent": `Lure-check/${engineVersion()} (+https://github.com/fapost-lab/lure)` },
     redirect: "follow",
     signal: AbortSignal.timeout(20_000),
   });
@@ -456,19 +467,35 @@ async function step(ws: string, hdr: any, c: Ctx): Promise<boolean> {
   }
   if (warnings.length) setWaiting(ws, id, null, warnings);
   const verdict = verdictFor(hdr, c.rows, c.events);
-  writeVerdict(ws, id, verdict as any, d.today);
+  writeVerdict(ws, id, verdict, d.today);
   journal(ws, d.today, `${id} measured: ${verdict.label}`, file, "remove verdict and set status live");
   r.changes.push("measured");
   return false;
 }
 
-export function verdictFor(hdr: any, rows: (DayRow & { page: string })[], events: Event[]) {
+// The parts of a hypothesis header the verdict reads (the file's header is looser; metrics.mts
+// validates it when it is written).
+export type Header = {
+  page: string;
+  metric: MeasureInput["metric"];
+  expected: MeasureInput["expected"];
+  floor: MeasureInput["floor"];
+  live_on: string;
+  before_window: Span;
+  after_window: Span;
+  controls?: { page: string; released?: boolean }[];
+  baseline?: { from?: unknown; to?: unknown; page?: { [metric: string]: unknown } };
+};
+
+export type Report = { warnings: string[]; updates: string[]; events: string[] };
+
+export function verdictFor(hdr: Header, rows: (DayRow & { page: string })[], events: Event[]): Verdict & Report {
   const before: Span = hdr.before_window, after: Span = hdr.after_window;
   const of = (page: string) => rows.filter((x) => x.page === page);
   // The page's own history: a page younger than its controls has fewer comparable periods.
   const own = of(hdr.page);
   const historyFrom = own.reduce((m, x) => (x.date < m ? x.date : m), own[0]?.date ?? before.from);
-  const controls = (hdr.controls ?? []).filter((c: any) => !c.released).map((c: any) => ({ page: c.page, rows: of(c.page) }));
+  const controls = (hdr.controls ?? []).filter((c) => !c.released).map((c) => ({ page: c.page, rows: of(c.page) }));
   const v = measure({
     metric: hdr.metric, expected: hdr.expected, floor: hdr.floor, liveOn: hdr.live_on,
     before, after, historyFrom, page: of(hdr.page), controls,
@@ -483,7 +510,7 @@ export function verdictFor(hdr: any, rows: (DayRow & { page: string })[], events
     // Per-day means: the before-window and the recorded baseline need not be the same length.
     const span = (a: Span) => Math.round((Date.parse(`${a.to}T00:00:00Z`) - Date.parse(`${a.from}T00:00:00Z`)) / 86_400_000) + 1;
     const bl = hdr.baseline ?? {};
-    const baseDays = isDate(bl.from) && isDate(bl.to) ? span({ from: bl.from, to: bl.to }) : span(before);
+    const baseDays = isDate(bl.from) && isDate(bl.to) ? span({ from: bl.from as string, to: bl.to as string }) : span(before);
     const ratio = (v.page.before / span(before)) / (recorded / baseDays);
     if (ratio > BASELINE_DRIFT || ratio < 1 / BASELINE_DRIFT) {
       warnings.push(`the before-window has ${v.page.before} ${hdr.metric}, the baseline recorded with the hypothesis ${recorded}: something else changed in between`);

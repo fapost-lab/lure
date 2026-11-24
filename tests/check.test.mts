@@ -8,7 +8,7 @@ import { join } from "node:path";
 
 import {
   LureError, property, account, registry, rankingIncidents, incidentLine, mergeIncidents, readEvents,
-  normalise, probe, verdictFor, checkWorkspace, runAll, status, main, INCIDENTS, BASELINE_DRIFT,
+  normalise, probe, engineVersion, verdictFor, checkWorkspace, runAll, status, main, INCIDENTS, BASELINE_DRIFT,
 } from "../plugins/lure/scripts/check.mts";
 import type { Deps } from "../plugins/lure/scripts/check.mts";
 import {
@@ -944,6 +944,34 @@ test("probe: sends a Lure-check/ User-Agent, matches across entities and whitesp
   assert.match(ua, /^Lure-check\//);
   assert.equal(calls[0].init!.redirect, "follow");
   assert.deepEqual(await probe(A, "absent text", f), { opened: true, found: false, status: 200 });
+});
+
+test("engineVersion: the engine copy's VERSION.json, else the plugin manifest, else a safe fallback", () => {
+  const root = mkdtempSync(join(tmpdir(), "lure-ver-"));
+  try {
+    const scripts = join(root, "scripts");
+    mkdirSync(scripts);
+    mkdirSync(join(root, ".claude-plugin"));
+    assert.equal(engineVersion(scripts), "unknown");
+    writeFileSync(join(root, ".claude-plugin", "plugin.json"), JSON.stringify({ version: "2.3.4" }));
+    assert.equal(engineVersion(scripts), "2.3.4");
+    writeFileSync(join(scripts, "VERSION.json"), JSON.stringify({ version: "5.6.7", files: {} }));
+    assert.equal(engineVersion(scripts), "5.6.7");
+    writeFileSync(join(scripts, "VERSION.json"), "{ not json");
+    assert.equal(engineVersion(scripts), "2.3.4");
+    writeFileSync(join(scripts, "VERSION.json"), JSON.stringify({ version: "x y\r\nz" }));
+    assert.equal(engineVersion(scripts), "2.3.4");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("probe: the User-Agent carries the real version, not a hard-coded one", async () => {
+  const calls: Call[] = [];
+  await probe(A, "x", makeFetch({ pageBody: "x" }, calls));
+  const ua = (calls[0].init!.headers as Record<string, string>)["user-agent"];
+  const manifest = JSON.parse(readFileSync(join(import.meta.dirname, "..", "plugins", "lure", ".claude-plugin", "plugin.json"), "utf8"));
+  assert.ok(ua.startsWith(`Lure-check/${manifest.version} `));
 });
 
 test("probe: 404/500 and challenge pages are not opened; an unreadable body does not throw", async () => {

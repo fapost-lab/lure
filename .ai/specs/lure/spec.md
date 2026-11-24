@@ -115,7 +115,9 @@ checking.*
 - Users at release: product owners without SEO experience (solo founders, "vibe coders") —
   rejected as the main audience: SEO specialists and agencies, who already have tools to
   choose from. Until release the author is the beta tester, on two products: the company
-  website (WordPress) and jig.fapost.in.
+  website (WordPress), where hypotheses are measured, and fapost.in, whose blog is where
+  content (phase 2) is tried. jig.fapost.in was dropped on 2026-11-24: Jig is being rewritten
+  on another stack, which would change its pages under any hypothesis.
 - The model is called by the agent runtime (Claude Code, Codex), as in Jig; Lure's own code
   never calls a model — rejected: an own API key, an extra key and an extra bill for
   non-developers. Cost: without an agent runtime Lure does nothing.
@@ -177,8 +179,7 @@ checking.*
 ## Open questions
 
 - Who at the company approves changes to the website, and does the company allow its data to
-  go to an AI model — whether the first phase can start on the company site at all, or starts
-  on jig.fapost.in.
+  go to an AI model. Phase 1 started on the company site; the answer may still limit it.
 - The format and period of the company data already collected — what the first phase imports
   as its first baseline.
 - Do OpenClaw skills work in Claude Code and Codex unchanged — whether they enter the vetted

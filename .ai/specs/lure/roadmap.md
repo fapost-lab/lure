@@ -35,8 +35,9 @@ and the author learns it from a Telegram message without having asked.
 ## Phase 2 — Content from own material
 
 Goal: articles for the website come from the person's experience at minutes of their time.
-Done when: one article built from the hypothesis log is published on jig.fapost.in with under
-twenty minutes of the author's time.
+Done when: one article built from the author's own material (an interview, and the hypothesis
+log where the product has one) is published on the fapost.in blog with under twenty minutes of
+the author's time. The blog does not exist yet; making it is the author's.
 
 - [ ] Interview to draft — the agent asks 5–10 questions (voice answers in Telegram accepted),
   drafts in the person's voice from the answers and the log, and checks facts, titles,

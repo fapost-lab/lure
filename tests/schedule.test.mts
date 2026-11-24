@@ -92,7 +92,8 @@ test("riskyWorkspaces", () => {
     "  - product: d",
     "    path: /Users/x/Desktop2/d",
   ].join("\n");
-  assert.deepEqual(riskyWorkspaces(reg, "/Users/x"), ["/Users/x/Documents/a/seo", "/Users/x/Downloads"]);
+  writeFileSync(join(lureHome, "workspaces.yaml"), reg);
+  assert.deepEqual(riskyWorkspaces(lureHome, "/Users/x"), ["/Users/x/Documents/a/seo", "/Users/x/Downloads"]);
 });
 
 test("plan has no side effects and mentions risky warning", () => {

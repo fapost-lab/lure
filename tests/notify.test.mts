@@ -649,6 +649,7 @@ test("runAll with notify: the page that does not open for Lure becomes a date qu
   const q = readNotice(ws).questions[0];
   assert.equal(sent[0].reply_markup.inline_keyboard[0][0].callback_data, `l:0:${q.q}:20260810`);
   assert.deepEqual(q.message_ids, [100]);
+  assert.deepEqual(q.shown, { "100": { asked_on: q.asked_on } });
   const files = [
     join(ws, ".lure", "check-last.json"), join(ws, ".lure", "notice.json"), join(home, "logs", "last-run.json"),
     join(ws, ".lure", "check.log"), join(ws, "journal.md"),
@@ -732,6 +733,29 @@ test("poll: an answer removes the buttons from every message that asked the ques
   assert.equal(r.applied, 1);
   const edits = calls.filter((c) => c.method === "editMessageReplyMarkup").map((c) => c.body.message_id);
   assert.deepEqual(edits, [50, 60]);
+});
+
+test("poll: an answer leaves another question's buttons in an older message as that message showed them", async () => {
+  pollSetup();
+  // Message 50 numbered the questions 1 and 2 on 2026-08-01; the later message 60 renumbered q2 as 1.
+  writeNotice(ws, {
+    ...emptyNotice(),
+    questions: [
+      question({ q: "q1", n: 1, asked_on: "2026-08-01", message_ids: [50] }),
+      question({
+        q: "q2", hypothesis: "other-hypothesis", page: "/b/", n: 1, asked_on: "2026-08-09", message_ids: [50, 60],
+        shown: { "50": { n: 2, asked_on: "2026-08-01" }, "60": { n: 1, asked_on: "2026-08-09" } },
+      }),
+    ],
+  });
+  const calls: Call[] = [];
+  const r = await poll(nd({ fetch: telegram({ updates: [[cb(10, "l:0:q1:20260801", OWNER.user_id, OWNER.chat_id, 50)]] }, calls) }));
+  assert.equal(r.applied, 1);
+  const edit50 = calls.find((c) => c.method === "editMessageReplyMarkup" && c.body.message_id === 50)!;
+  const rows = edit50.body.reply_markup.inline_keyboard;
+  assert.equal(rows.length, 1);
+  assert.match(rows[0][0].text, /^2 · /);
+  assert.deepEqual(rows[0].map((b: any) => b.callback_data), ["l:0:q2:20260801", "l:0:q2:20260731", "l:0:q2:other"]);
 });
 
 // ---- Desktop fallback and the weekly digest (F3) -----------------------------------------

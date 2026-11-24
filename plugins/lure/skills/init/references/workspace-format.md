@@ -203,6 +203,8 @@ workspace. Only `notify.mts` writes it:
   - `n` is the question's number when one message asks several.
   - `message_ids` lists the messages whose buttons ask it, at most the last 10. A button counts
     only from one of these messages.
+  - `shown` (optional) keeps, per message id, the `n` and `asked_on` that message showed, so
+    its remaining buttons keep their labels after another question is answered.
   - `reply_id` is the bot's request for another date. Only a reply to it is read as a date.
 - No key holds anything the person wrote in the chat.
 

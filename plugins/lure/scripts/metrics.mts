@@ -467,6 +467,11 @@ export function markLive(ws: string, id: string, liveOn: string, source: "marker
   need(isDate(liveOn), "the live date must be a date");
   need(liveOn >= h.header.recorded, `the live date cannot be before the hypothesis was recorded (${h.header.recorded})`);
   need(liveOn <= today, "the live date cannot be in the future");
+  // A day the check saw the page without the marker cannot be a live day. The marker's own
+  // date is the day it was seen, so only a date said by the person is held to this.
+  const absent = h.header.live_absent_on;
+  need(source !== "person" || !isDate(absent) || liveOn > absent,
+    `the live date cannot be on or before ${absent}, a day the check saw the page without the marker`);
   const correctable = h.header.status === "planned" || (h.header.status === "live" && !h.header.crawled_on);
   need(correctable, `${id} is ${h.header.status}${h.header.crawled_on ? `, re-crawled ${h.header.crawled_on}` : ""}; its live date can no longer change`);
   if (source === "marker" && h.header.status === "live") return false; // the person's date stands

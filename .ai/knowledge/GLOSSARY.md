@@ -141,8 +141,9 @@ Use in: source code, documentation.
 ## Live date
 
 `live_on`: the day a hypothesis's change reached the public site. The check sees it as the
-`live_marker` appearing on the page, or the person says it. It can change until Google
-re-crawls the page (`crawled_on`); after that the measurement windows are fixed.
+`live_marker` appearing on the page, or the person says it. A date the person says cannot be
+on or before `live_absent_on`, a day the check saw the page without the marker. It can change
+until Google re-crawls the page (`crawled_on`); after that the measurement windows are fixed.
 
 Informal synonyms: deploy date, release date, go-live.
 Use in: source code, documentation.

@@ -810,7 +810,7 @@ test("markAbsent: only for planned; idempotent within a day", () => {
   assert.equal(markAbsent(ws, ID, "2026-08-02"), true);
   assert.equal(markAbsent(ws, ID, "2026-08-02"), false);
   assert.equal(markAbsent(ws, ID, "2026-08-03"), true);
-  goLive();
+  goLive("2026-08-04");
   refuses(() => markAbsent(ws, ID, "2026-08-04"), /not planned/);
 });
 
@@ -1219,6 +1219,101 @@ test("F15: the token reaches pull and inspect but never stdout, stderr, check-la
   const files = ["check-last.json", "check.log"].map((f) => readFileSync(join(ws, ".lure", f), "utf8"))
     .concat(readFileSync(join(home, "logs", "last-run.json"), "utf8"), readFileSync(hypPath(), "utf8"), journalOf());
   const everything = [...ok.out, ...ok.err, ...bad.out, ...bad.err, ...files].join("\n");
+  assert.ok(!everything.includes(SECRET_TOKEN));
+  assert.ok(!everything.includes("SECRET"));
+});
+
+// ---- 18. review fixes: F12 .. F21 of the scheduled-check review ---------------------------
+
+test("F12: a live date said by the person on or before live_absent_on is refused; the day after is accepted", () => {
+  setup();
+  markAbsent(ws, ID, "2026-08-03");
+  refuses(() => markLive(ws, ID, "2026-08-03", "person", "2026-08-10"), /on or before 2026-08-03.*without the marker/);
+  refuses(() => markLive(ws, ID, "2026-08-02", "person", "2026-08-10"), /on or before 2026-08-03.*without the marker/);
+  assert.equal(hdr().status, "planned");
+  assert.equal(markLive(ws, ID, "2026-08-04", "person", "2026-08-10"), true);
+  assert.equal(hdr().live_on, "2026-08-04");
+});
+
+test("F12: the same refusal reaches `check live` as exit code 1 with the reason", async () => {
+  setup();
+  markAbsent(ws, ID, "2026-08-03");
+  const r = await quiet(() => main(["live", "--workspace", ws, "--id", ID, "--date", "2026-08-03"], deps({ today: "2026-08-10" })));
+  assert.equal(r.result, 1);
+  assert.match(r.err.join("\n"), /without the marker/);
+  assert.equal(hdr().status, "planned");
+});
+
+test("F13: an incident line annotated, in parentheses or with CRLF is found by its id and not duplicated", () => {
+  const inc = { id: "42", name: "Spam update", begin: "2026-10-01", end: null as string | null };
+  const base = "# Events\n\n";
+  for (const tail of ["", " (outage)", " — my note", "\r"]) {
+    const text = `${base}- 2026-10-01 … open — Spam update — status.search.google.com, incident 42${tail}\n`;
+    const r = mergeIncidents(text, [inc]);
+    assert.equal(r.text.split("\n").filter((l) => /incident 42/.test(l)).length, 1, JSON.stringify(tail));
+    assert.deepEqual(r.changes, [], JSON.stringify(tail));
+    assert.equal(r.text, text, JSON.stringify(tail));
+  }
+  // an id that merely starts with this one is another incident
+  const other = mergeIncidents(`${base}- 2026-10-01 — X — incident 421\n`, [inc]);
+  assert.deepEqual(other.changes, ["added: Spam update"]);
+});
+
+test("F13: an annotated open line is updated when the rollout ends, keeping its annotation and CRLF", () => {
+  const inc = { id: "42", name: "Spam update", begin: "2026-10-01", end: "2026-10-06" };
+  const text = "# Events\r\n\r\n- 2026-10-01 … open — Spam update — status.search.google.com, incident 42 (outage)\r\n";
+  const r = mergeIncidents(text, [inc]);
+  assert.match(r.text, /^- 2026-10-01 … 2026-10-06 — Spam update — status\.search\.google\.com, incident 42 \(outage\)\r$/m);
+  assert.equal(r.text.split("\n").filter((l) => /incident 42/.test(l)).length, 1);
+});
+
+test("F14: the journal undo of an updated incident line restores the previous text, an added one deletes the line", async () => {
+  setup();
+  const old = "- 2026-10-01 … open — Spam update — status.search.google.com, incident 9";
+  writeFileSync(join(ws, "events.md"), `# Events\n\n${old}\n`);
+  const incidents = [
+    { id: "9", service_name: "Ranking", external_desc: "Spam update", begin: "2026-10-01T00:00:00Z", end: "2026-10-06T00:00:00Z" },
+    { id: "10", service_name: "Ranking", external_desc: "Core update", begin: "2026-11-01T00:00:00Z", end: null },
+  ];
+  await checkWorkspace(ws, deps({ today: "2026-08-02", world: { incidents } }));
+  const lines = journalOf().split("\n");
+  const updated = lines.find((l) => /Google update updated/.test(l))!;
+  const added = lines.find((l) => /Google update added/.test(l))!;
+  assert.ok(updated && added, journalOf());
+  assert.ok(updated.includes(`restore the line "${old}"`), updated);
+  assert.doesNotMatch(updated, /delete the line/);
+  assert.match(added, /delete the line$/);
+});
+
+test("F21: baseline drift compares per-day means, so windows of different length do not warn or hide drift", () => {
+  const { h, rows } = crawledRows();
+  const before = verdictFor(h, rows, []).page.before;
+  const len = Math.round((Date.parse(`${h.before_window.to}T00:00:00Z`) - Date.parse(`${h.before_window.from}T00:00:00Z`)) / 86_400_000) + 1;
+  const base = (days: number, clicks: number) =>
+    ({ from: addDays("2026-06-01", 0), to: addDays("2026-06-01", days - 1), page: { clicks } });
+  // 3x the days, 3x the clicks: the same per-day mean, no warning (sums alone would be a 3x gap)
+  assert.deepEqual(verdictFor({ ...h, baseline: base(len * 3, before * 3) }, rows, []).warnings, []);
+  // 3x the days, the same sum: a third of the per-day mean, which is a real drift (sums alone would not warn)
+  const v = verdictFor({ ...h, baseline: base(len * 3, before) }, rows, []);
+  assert.equal(v.warnings.length, 1);
+  assert.match(v.warnings[0], /something else changed/);
+});
+
+test("F15: `check run --workspace` never prints the access token, nor writes it to check-last.json, check.log, last-run.json or the hypothesis", async () => {
+  setup();
+  goLive();
+  const run = (d: Partial<Deps>) => quiet(() => main(["run", "--workspace", ws], deps({ world: { pageBody: withMarker }, token: async () => SECRET_TOKEN, ...d })));
+  const bad = await run({
+    pull: async () => { throw new GoogleError("pull refused (401)"); },
+    inspect: async () => { throw new GoogleError("inspect refused (401)"); },
+  });
+  const ok = await run({ pull: async () => ({}), inspect: async () => crawlTime("2026-08-05") });
+  assert.equal(bad.result, 1);
+  assert.equal(ok.result, 0);
+  const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
+  const files = [join(ws, ".lure", "check-last.json"), join(ws, ".lure", "check.log"), join(home, "logs", "last-run.json"), hypPath(), join(ws, "journal.md")].map(read);
+  assert.ok(files[0].length > 0, "check-last.json was written");
+  const everything = [...bad.out, ...bad.err, ...ok.out, ...ok.err, ...files].join("\n");
   assert.ok(!everything.includes(SECRET_TOKEN));
   assert.ok(!everything.includes("SECRET"));
 });

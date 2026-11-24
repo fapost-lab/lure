@@ -11,13 +11,13 @@ Goal: the author's two products run the full loop with no CLI — skills, a mark
 local schedule. Done when: a hypothesis on the company website reaches a verdict on schedule,
 and the author learns it from a Telegram message without having asked.
 
-- [ ] `product-workspace` — Product workspace: `lure-init` creates a product's folder, drafts its profile from the
+- [x] `product-workspace` — Product workspace: `lure-init` creates a product's folder, drafts its profile from the
   website's address for the person to correct, and installs audit tools from the vetted list
   (or by link, with a warning)
-- [ ] `search-console-access` — Search Console access: connect through the author's Google Cloud project, and import the
+- [x] `search-console-access` — Search Console access: connect through the author's Google Cloud project, and import the
   company data already collected as the first baseline (after: `product-workspace` — the data
   lands in a workspace)
-- [ ] `hypothesis-baseline` — Hypothesis with baseline: `lure-hypothesis` records what changes, where and why, snapshots
+- [x] `hypothesis-baseline` — Hypothesis with baseline: `lure-hypothesis` records what changes, where and why, snapshots
   the baseline, picks control pages, states the traffic floor and sets the check date (after:
   `search-console-access` — the baseline is read from it)
 - [x] `scheduled-check` — Scheduled check: `lure-check` runs on a local schedule, confirms the change is live and
